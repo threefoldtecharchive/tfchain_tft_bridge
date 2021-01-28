@@ -9,7 +9,7 @@ Tokens can unlock gradually if the price of TFT rises and is above a treshold.
 **Current month and previous months unlock if:** 
 
 ```
-TFT Price > month * 0,5 % + 0.20
+TFT Price > (month * 0.5%) + 0.20
 ```
 
 For example. A user wants to vest 1200 tokens for 1 year, after 1 year the vested tokens unlock again. 
@@ -18,7 +18,7 @@ Let's say the TFT price at the start of the vesting period is 0.10 dollar, if fo
 TFT Price at month 2: 
 
 ```
-0.22 > 2 * 0.5 % + 0.20 = 0.21 
+0.22 > (2 * 0.5%) + 0.20 = 0.21 
 ```
 
 ## Technical implementation
