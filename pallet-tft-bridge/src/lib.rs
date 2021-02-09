@@ -46,6 +46,8 @@ decl_error! {
 	pub enum Error for Module<T: Trait> {
 		ValidatorExists,
 		ValidatorNotExists,
+		TransactionValidatorExists,
+		TransactionValidatorNotExists,
 		TransactionExists,
 		TransactionNotExists,
 	}
@@ -78,13 +80,13 @@ decl_module! {
 		
 		#[weight = 10_000]
 		fn add_validator(origin, target: T::AccountId){
-            ensure_root(origin)?;
+            ensure_signed(origin)?;
             Self::add_validator_account(target)?;
 		}
 		
 		#[weight = 10_000]
 		fn remove_validator(origin, target: T::AccountId){
-            ensure_root(origin)?;
+            ensure_signed(origin)?;
             Self::remove_validator_account(target)?;
 		}
 		
@@ -144,30 +146,35 @@ impl<T: Trait> Module<T> {
 	}
 
 	pub fn propose_stellar_transaction(origin: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+		// make sure we don't duplicate the transaction
 		ensure!(!Transactions::<T>::contains_key(tx_id.clone()), Error::<T>::TransactionExists);
 		
-		let tx = StellarTransaction {
-			amount,
-			target: target.clone()
-		};
-		Transactions::<T>::insert(tx_id.clone(), &tx);
-		
-		ensure!(TransactionValidators::<T>::contains_key(tx_id.clone()), Error::<T>::TransactionNotExists);
-		
-		// list where voters are kept
-		let mut voters: Vec<T::AccountId> = Vec::new();
-		// init the list with the validator proposing this transaction
-		voters.push(origin);
+		let validators = Validators::<T>::get();
+		match validators.binary_search(&origin) {
+			Ok(_) => {
+				// list where voters are kept
+				let mut voters: Vec<T::AccountId> = Vec::new();
+				// init the list with the validator proposing this transaction
+				voters.push(origin);
+				
+				TransactionValidators::<T>::insert(&tx_id.clone(), voters);
+				
+				let tx = StellarTransaction {
+					amount,
+					target: target.clone()
+				};
+				Transactions::<T>::insert(tx_id.clone(), &tx);
 
-		TransactionValidators::<T>::insert(&tx_id.clone(), voters);
+				Self::deposit_event(RawEvent::TransactionProposed(tx_id, target, amount));
 
-		Self::deposit_event(RawEvent::TransactionProposed(tx_id, target, amount));
-
-		Ok(())
+				Ok(())
+			},
+			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
+		}
 	}
 
 	pub fn vote_stellar_transaction(validator: T::AccountId, tx_id: Vec<u8>) -> DispatchResult {
-		ensure!(!TransactionValidators::<T>::contains_key(tx_id.clone()), Error::<T>::TransactionExists);
+		ensure!(TransactionValidators::<T>::contains_key(tx_id.clone()), Error::<T>::TransactionNotExists);
 		
 		// fetch the validators list
 		let mut stellar_transaction_validators = TransactionValidators::<T>::get(tx_id.clone());
@@ -178,14 +185,14 @@ impl<T: Trait> Module<T> {
 				// if the validator is a valid validator, we can add it's vote to the stellar transaction
 				// if the vote is already there, return an error
 				match stellar_transaction_validators.binary_search(&validator) {
-					Ok(_) => Err(Error::<T>::ValidatorExists.into()),
+					Ok(_) => Ok(()),
 					Err(index) => {
 						stellar_transaction_validators.insert(index, validator.clone());
 						debug::info!("inserting vote for validator {:?}", validator.clone());
 						TransactionValidators::<T>::insert(tx_id.clone(), &stellar_transaction_validators);
 
 						// If majority aggrees on the transaction, mint tokens to target address
-						if stellar_transaction_validators.len() > (validators.len() + 1) {
+						if stellar_transaction_validators.len() > (validators.len() / 2) {
 							let tx = Transactions::<T>::get(&tx_id.clone());
 
 							debug::info!("enough votes, minting transaction...");
