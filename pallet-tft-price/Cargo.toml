@@ -5,7 +5,7 @@ edition = '2018'
 homepage = 'threefold.io'
 license = 'Apache 2.0'
 name = 'pallet-tft-price-oracle'
-repository = 'https://github.com/threefoldfoundation/tft-substrate'
+repository = 'https://github.com/threefoldfoundation/tft-parity'
 version = '1.0.0'
 
 [package.metadata.docs.rs]

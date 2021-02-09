@@ -37,7 +37,7 @@ decl_event!(
 	{
 		AccountDrained(AccountId, Balance, BlockNumber),
 		AccountFunded(AccountId, Balance, BlockNumber),
-		TransactionProposed(Vec<u8>),
+		TransactionProposed(Vec<u8>, AccountId, Balance),
 	}
 );
 
@@ -148,7 +148,7 @@ impl<T: Trait> Module<T> {
 		
 		let tx = StellarTransaction {
 			amount,
-			target
+			target: target.clone()
 		};
 		Transactions::<T>::insert(tx_id.clone(), &tx);
 		
@@ -161,7 +161,7 @@ impl<T: Trait> Module<T> {
 
 		TransactionValidators::<T>::insert(&tx_id.clone(), voters);
 
-		Self::deposit_event(RawEvent::TransactionProposed(tx_id));
+		Self::deposit_event(RawEvent::TransactionProposed(tx_id, target, amount));
 
 		Ok(())
 	}
