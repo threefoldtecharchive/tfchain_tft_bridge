@@ -12,6 +12,7 @@ use frame_support::{
 use frame_system::{self as system, ensure_signed, ensure_root};
 use sp_runtime::{DispatchResult};
 use codec::{Decode, Encode};
+use sp_runtime::traits::SaturatedConversion;
 
 // balance type using reservable currency type
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
@@ -54,16 +55,21 @@ decl_error! {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
-pub struct StellarTransaction <BalanceOf, AccountId>{
+pub struct StellarTransaction <BalanceOf, AccountId, BlockNumber>{
 	pub amount: BalanceOf,
 	pub target: AccountId,
+	pub block: BlockNumber,
 }
 
 decl_storage! {
 	trait Store for Module<T: Trait> as TFTBridgeModule {
 		pub Validators get(fn validator_accounts): Vec<T::AccountId>;
 
-		pub Transactions get(fn transaction): map hasher(blake2_128_concat) Vec<u8> => StellarTransaction<BalanceOf<T>, T::AccountId>;
+		pub Transactions get(fn transactions): map hasher(blake2_128_concat) Vec<u8> => StellarTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
+		
+		pub ExpiredTransactions get(fn expired_transactions): map hasher(blake2_128_concat) Vec<u8> => StellarTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
+		pub ExecutedTransactions get(fn executed_transactions): map hasher(blake2_128_concat) Vec<u8> => StellarTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
+
 		pub TransactionValidators get(fn transaction_validators): map hasher(blake2_128_concat) Vec<u8> => Vec<T::AccountId>;
 	}
 }
@@ -101,15 +107,41 @@ decl_module! {
             let validator = ensure_signed(origin.clone())?;
 			Self::vote_stellar_transaction(validator, transaction)?;
 		}
+
+		fn on_finalize(block: T::BlockNumber) {
+			let current_block_u64: u64 = block.saturated_into::<u64>();
+
+			for (tx_id, tx) in Transactions::<T>::iter() {
+				let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
+				// if 100 blocks have passed since the tx got submitted
+				// we can safely assume this tx is fault
+				// add the faulty tx to the expired tx list
+				if current_block_u64 - tx_block_u64 >= 100 {
+					// Remove tx from storage
+					Transactions::<T>::remove(tx_id.clone());
+					// Remove tx validators from storage
+					TransactionValidators::<T>::remove(tx_id.clone());
+					// Insert into expired transactions list
+					ExpiredTransactions::<T>::insert(tx_id, tx);
+				}
+			}
+		}
 	}
 }
 
 impl<T: Trait> Module<T> {
-	pub fn mint_tft(target: T::AccountId, amount: BalanceOf<T>) {        
-        T::Currency::deposit_creating(&target, amount);
-    
+	pub fn mint_tft(tx_id: Vec<u8>, tx: StellarTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>) {        
+        T::Currency::deposit_creating(&tx.target, tx.amount);
+	
+		// Remove tx from storage
+		Transactions::<T>::remove(tx_id.clone());
+		// Remove tx validators from storage
+		TransactionValidators::<T>::remove(tx_id.clone());
+		// Insert into executed transactions
+		ExecutedTransactions::<T>::insert(tx_id, &tx);
+
         let now = <system::Module<T>>::block_number();
-        Self::deposit_event(RawEvent::AccountFunded(target, amount, now));
+        Self::deposit_event(RawEvent::AccountFunded(tx.target, tx.amount, now));
     }
 
     pub fn burn_tft(target: T::AccountId, amount: BalanceOf<T>) {
@@ -159,9 +191,11 @@ impl<T: Trait> Module<T> {
 				
 				TransactionValidators::<T>::insert(&tx_id.clone(), voters);
 				
+				let now = <frame_system::Module<T>>::block_number();
 				let tx = StellarTransaction {
 					amount,
-					target: target.clone()
+					target: target.clone(),
+					block: now,
 				};
 				Transactions::<T>::insert(tx_id.clone(), &tx);
 
@@ -196,7 +230,7 @@ impl<T: Trait> Module<T> {
 							let tx = Transactions::<T>::get(&tx_id.clone());
 
 							debug::info!("enough votes, minting transaction...");
-							Self::mint_tft(tx.target, tx.amount);
+							Self::mint_tft(tx_id, tx);
 						}
 
 						Ok(())
