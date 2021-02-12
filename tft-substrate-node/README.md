@@ -1,10 +1,8 @@
 # TFT Substrate Node
 
-A FRAME-based [Substrate](https://www.substrate.io/) node.
+A FRAME-based [Substrate](https://www.substrate.io/) node for Threefold Token (TFT).
 
-## Getting Started
-
-This project contains some configuration files to help get started :hammer_and_wrench:
+## Build
 
 ### Rust Setup
 
@@ -24,9 +22,6 @@ targets:
 The init script and Makefile both specify the version of the
 [Rust nightly compiler](https://substrate.dev/docs/en/knowledgebase/getting-started/#rust-nightly-toolchain)
 that this project depends on.
-
-### Build
-
 The `make run` command will perform an initial build. Use the following command to build the node
 without launching it:
 
@@ -52,28 +47,36 @@ terminate the process. After the project has been built, there are other ways to
 
 This command will start the single-node development chain with persistent state:
 
-```bash
+```sh
 ./target/release/tft-substrate-node --dev
 ```
 
 Purge the development chain's state:
 
-```bash
+```sh
 ./target/release/tft-substrate-node purge-chain --dev
 ```
 
 Start the development chain with detailed logging:
 
-```bash
+```sh
 RUST_LOG=debug RUST_BACKTRACE=1 ./target/release/tft-substrate-node -lruntime=debug --dev
 ```
+
+This command will start a temporary node in development mode:
+
+```sh
+./target/release/tft-substrate-node --dev --tmp
+```
+
+Interact with the node using the [polkadot UI](https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer) ( does not work in Safari, use Chrome). You do have to enable the ws endpoint by adding the `--ws-external` parameter to the node command.
 
 ### Multi-Node Local Testnet
 
 If you want to see the multi-node consensus algorithm in action, refer to
 [our Start a Private Network tutorial](https://substrate.dev/docs/en/tutorials/start-a-private-network/).
 
-## Template Structure
+## Structure
 
 A Substrate project such as this consists of a number of components that are spread across a few
 directories.
@@ -147,8 +150,7 @@ the following:
 ### Pallets
 
 The runtime in this project is constructed using many FRAME pallets that ship with the
-[core Substrate repository](https://github.com/paritytech/substrate/tree/master/frame) and a
-template pallet that is [defined in the `pallets`](./pallets/template/src/lib.rs) directory.
+[core Substrate repository](https://github.com/paritytech/substrate/tree/master/frame).
 
 A FRAME pallet is compromised of a number of blockchain primitives:
 
@@ -179,7 +181,7 @@ This command will firstly compile your code, and then start a local development 
 also replace the default command (`cargo build --release && ./target/release/tft-substrate-node --dev --ws-external`)
 by appending your own. A few useful ones are as follow.
 
-```bash
+```sh
 # Run Substrate node without re-compiling
 ./scripts/docker_run.sh ./target/release/tft-substrate-node --dev --ws-external
 
