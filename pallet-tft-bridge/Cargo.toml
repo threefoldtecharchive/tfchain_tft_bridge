@@ -18,11 +18,6 @@ features = ['derive']
 package = 'parity-scale-codec'
 version = '1.3.4'
 
-[dependencies.fixed]
-default-features = false
-git = "https://github.com/encointer/substrate-fixed"
-package = "substrate-fixed"
-
 [dependencies]
 # Substrate packages
 
