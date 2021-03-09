@@ -15,12 +15,12 @@ use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
 
 // balance type using reservable currency type
-type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
 type NegativeImbalanceOf<T> =
-	<<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::NegativeImbalance;
+	<<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::NegativeImbalance;
 
-pub trait Trait: system::Trait {
-	type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
+pub trait Config: system::Config {
+	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
 
 	/// Currency type for this pallet.
 	type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
@@ -32,9 +32,9 @@ pub trait Trait: system::Trait {
 decl_event!(
 	pub enum Event<T>
 	where
-		AccountId = <T as system::Trait>::AccountId,
+		AccountId = <T as system::Config>::AccountId,
 		Balance = BalanceOf<T>,
-		BlockNumber = <T as system::Trait>::BlockNumber,
+		BlockNumber = <T as system::Config>::BlockNumber,
 	{
 		AccountDrained(AccountId, Balance, BlockNumber),
 		AccountFunded(AccountId, Balance, BlockNumber),
@@ -44,7 +44,7 @@ decl_event!(
 
 decl_error! {
 	/// Error for the vesting module.
-	pub enum Error for Module<T: Trait> {
+	pub enum Error for Module<T: Config> {
 		ValidatorExists,
 		ValidatorNotExists,
 		TransactionValidatorExists,
@@ -62,7 +62,7 @@ pub struct StellarTransaction <BalanceOf, AccountId, BlockNumber>{
 }
 
 decl_storage! {
-	trait Store for Module<T: Trait> as TFTBridgeModule {
+	trait Store for Module<T: Config> as TFTBridgeModule {
 		pub Validators get(fn validator_accounts): Vec<T::AccountId>;
 
 		pub Transactions get(fn transactions): map hasher(blake2_128_concat) Vec<u8> => StellarTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
@@ -75,24 +75,24 @@ decl_storage! {
 }
 
 decl_module! {
-	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+	pub struct Module<T: Config> for enum Call where origin: T::Origin {
 		fn deposit_event() = default;
 
         #[weight = 10_000]
 		fn swap_to_stellar(origin, target: T::AccountId, amount: BalanceOf<T>){
-            ensure_signed(origin)?;
+            ensure_root(origin)?;
             Self::burn_tft(target, amount);
 		}
 		
 		#[weight = 10_000]
 		fn add_validator(origin, target: T::AccountId){
-            ensure_signed(origin)?;
+            ensure_root(origin)?;
             Self::add_validator_account(target)?;
 		}
 		
 		#[weight = 10_000]
 		fn remove_validator(origin, target: T::AccountId){
-            ensure_signed(origin)?;
+            ensure_root(origin)?;
             Self::remove_validator_account(target)?;
 		}
 		
@@ -129,7 +129,7 @@ decl_module! {
 	}
 }
 
-impl<T: Trait> Module<T> {
+impl<T: Config> Module<T> {
 	pub fn mint_tft(tx_id: Vec<u8>, tx: StellarTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>) {        
         T::Currency::deposit_creating(&tx.target, tx.amount);
 	
