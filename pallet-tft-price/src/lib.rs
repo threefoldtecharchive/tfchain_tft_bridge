@@ -63,8 +63,8 @@ pub mod crypto {
 // #[cfg(test)]
 // mod tests;
 
-pub trait Trait: system::Trait + CreateSignedTransaction<Call<Self>> {
-	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
+pub trait Config: system::Config + CreateSignedTransaction<Call<Self>> {
+	type Event: From<Event<Self>> + Into<<Self as system::Config>::Event>;
 
 	// Add other types and constants required to configure this pallet.
     type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
@@ -72,27 +72,27 @@ pub trait Trait: system::Trait + CreateSignedTransaction<Call<Self>> {
 }
 
 decl_storage! {
-	trait Store for Module<T: Trait> as TFTPriceModule {
+	trait Store for Module<T: Config> as TFTPriceModule {
 		// Token price
 		pub TftPrice: U16F16;
 	}
 }
 
 decl_event! {
-	pub enum Event<T> where AccountId = <T as frame_system::Trait>::AccountId {
+	pub enum Event<T> where AccountId = <T as frame_system::Config>::AccountId {
 		PriceStored(U16F16, AccountId),
 	}
 }
 
 decl_error! {
-	pub enum Error for Module<T: Trait> {
+	pub enum Error for Module<T: Config> {
 		OffchainSignedTxError,
 		NoLocalAcctForSigning
 	}
 }
 
 decl_module! {
-	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+	pub struct Module<T: Config> for enum Call where origin: T::Origin {
 		type Error = Error<T>;
 
 		fn deposit_event() = default;
@@ -118,7 +118,7 @@ decl_module! {
 	}
 }
 
-impl<T: Trait> Module<T> {
+impl<T: Config> Module<T> {
     /// Fetch current price and return the result in cents.
     fn fetch_price() -> Result<f64, http::Error> {
         let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
