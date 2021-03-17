@@ -16,14 +16,14 @@ use frame_system::{
 		AppCrypto, CreateSignedTransaction, SendSignedTransaction, Signer,
 	},
 };
-use system::{ensure_none};
 
 use sp_std::prelude::*;
 
 use lite_json::json::JsonValue;
 use sp_runtime::{
-    offchain::{http, Duration},
+    offchain::{http, Duration}, DispatchResult,
 };
+use sp_runtime::traits::SaturatedConversion;
 
 use fixed::{types::U16F16};
 
@@ -75,6 +75,9 @@ decl_storage! {
 	trait Store for Module<T: Config> as TFTPriceModule {
 		// Token price
 		pub TftPrice: U16F16;
+        pub LastBlockSet: T::BlockNumber;
+        pub AverageTftPrice: U16F16;
+        pub TftPricesHistory: Vec<U16F16>;
 	}
 }
 
@@ -97,20 +100,14 @@ decl_module! {
 
 		fn deposit_event() = default;
 
-		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		fn set_prices(origin, price: U16F16){
+		#[weight = 10_000 + T::DbWeight::get().writes(3)]
+		fn set_prices(origin, price: U16F16, block_number: T::BlockNumber){
 			let _ = ensure_signed(origin)?;
-			TftPrice::put(price);
-		}
-
-		#[weight = 10_000 + T::DbWeight::get().writes(1)]
-		fn submit_price(origin, price: U16F16) {
-			ensure_none(origin)?;
-			TftPrice::put(price);
+			Self::calculate_and_set_price(price, block_number)?;
 		}
 
 		fn offchain_worker(block_number: T::BlockNumber) {
-			match Self::offchain_signed_tx() {
+			match Self::offchain_signed_tx(block_number) {
 				Ok(_) => debug::info!("worker executed"),
 				Err(err) => debug::info!("err: {:?}", err)
 			}
@@ -119,6 +116,36 @@ decl_module! {
 }
 
 impl<T: Config> Module<T> {
+    fn calculate_and_set_price(price: U16F16, block_number: T::BlockNumber) -> DispatchResult {
+        TftPrice::put(price);
+        debug::info!("price {:?}", price);
+
+        let last_block_set: T::BlockNumber = LastBlockSet::<T>::get();
+
+        // Store the average every 10 minutes
+        if block_number.saturated_into::<u64>() - last_block_set.saturated_into::<u64>() > 100 {
+            debug::info!("storing average now");
+
+            let mut history = TftPricesHistory::get();
+            history.push(price);
+            TftPricesHistory::put(&history);
+    
+            let mut sum: U16F16 = U16F16::from_num(0);
+            for hist in history.iter() {
+                sum += hist;
+            }
+    
+            let average = U16F16::from_num(f64::from(sum) / history.len() as f64);
+            debug::info!("average price {:?}", average);
+            AverageTftPrice::put(average);
+
+            // update last block set
+            LastBlockSet::<T>::put(block_number);
+        }
+
+        Ok(())
+    }
+
     /// Fetch current price and return the result in cents.
     fn fetch_price() -> Result<f64, http::Error> {
         let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
@@ -156,9 +183,6 @@ impl<T: Config> Module<T> {
                 Err(http::Error::Unknown)
             }
         }?;
-
-        debug::info!("TFT price: {:?}", price);
-
         Ok(price)
 	}
 	
@@ -185,7 +209,7 @@ impl<T: Config> Module<T> {
         Some(price)
 	}
 	
-	fn offchain_signed_tx() -> Result<(), Error<T>> {
+	fn offchain_signed_tx(block_number: T::BlockNumber) -> Result<(), Error<T>> {
 		let price = match Self::fetch_price() {
 			Ok(v) => v,
 			Err(_) => return Err(<Error<T>>::OffchainSignedTxError)
@@ -196,7 +220,7 @@ impl<T: Config> Module<T> {
         let signer = Signer::<T, T::AuthorityId>::any_account();
 
         let result = signer.send_signed_transaction(|_acct| {
-            Call::set_prices(price_to_fixed)
+            Call::set_prices(price_to_fixed, block_number)
         });
     
         // Display error if the signed tx fails.
