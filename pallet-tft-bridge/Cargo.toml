@@ -20,8 +20,8 @@ version = '2.0.0'
 
 [dependencies]
 # Substrate packages
-
-balances = { package = 'pallet-balances', version = '3.0.0', default-features = false }
+serde = '1.0'
+pallet-balances = { version = '3.0', default-features = false }
 frame-support = { version = '3.0.0', default-features = false }
 frame-system = { version = '3.0.0', default-features = false }
 sp-core = { version = '3.0.0', default-features = false }
@@ -39,10 +39,9 @@ sp-io = { version = '3.0.0', default-features = false }
 [features]
 default = ['std']
 std = [
-	'balances/std',
+	'pallet-balances/std',
 	'frame-support/std',
 	'frame-system/std',
-	'codec/std',
 	'sp-core/std',
 	'sp-runtime/std',
 	'sp-std/std',

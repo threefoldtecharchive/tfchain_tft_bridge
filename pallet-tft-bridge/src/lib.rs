@@ -14,6 +14,12 @@ use sp_runtime::{DispatchResult};
 use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
 
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod mock;
+
 // balance type using reservable currency type
 type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
 type NegativeImbalanceOf<T> =
@@ -221,7 +227,7 @@ impl<T: Config> Module<T> {
 				MintTransactions::<T>::insert(&tx_id, &mint_transaction);
 
 				// If majority aggrees on the transaction, mint tokens to target address
-				if mint_transaction.votes as usize > (validators.len() / 2) + 1 {
+				if mint_transaction.votes as usize >= (validators.len() / 2) + 1 {
 					debug::info!("enough votes, minting transaction...");
 					Self::mint_tft(tx_id.clone(), mint_transaction);
 				}
@@ -273,8 +279,9 @@ impl<T: Config> Module<T> {
 				// if more then then the half of all validators
 				// submitted their signature we can emit an event that a transaction
 				// is ready to be submitted to the stellar network
-				if tx.signatures.len() > (validators.len() / 2) + 1 {
-					Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
+				if tx.signatures.len() >= (validators.len() / 2) + 1 {
+					Self::deposit_event(RawEvent::BurnTransactionReady(tx_id.clone()));
+					ExecutedBurnTransactions::<T>::insert(tx_id, tx);
 				}
 
 				Ok(())
