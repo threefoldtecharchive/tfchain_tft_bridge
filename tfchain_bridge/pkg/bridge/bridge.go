@@ -101,6 +101,28 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Channel where withdrawal events are stored
+	// Should only be read from by the master bridge
+	burnChan := make(chan substrate.BurnTransactionCreated)
+
+	go func() {
+		if err := bridge.subClient.SubscribeBurnEvents(burnChan); err != nil {
+			panic(err)
+		}
+	}()
+
+	go func() {
+
+		for {
+			select {
+			case burn := <-burnChan:
+				{
+					log.Info().Msgf("received burn event %+v", burn)
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 

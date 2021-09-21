@@ -34,16 +34,18 @@ var smartContractModuleErrors = []string{
 // TODO: add all events from SmartContractModule and TfgridModule
 
 // ContractCanceled is the contract canceled event
-type ContractCanceled struct {
-	Phase      types.Phase
-	ContractID types.U64
-	Topics     []types.Hash
+type BurnTransactionCreated struct {
+	Phase             types.Phase
+	BurnTransactionID types.U64
+	Target            types.AccountID
+	Amount            types.U64
+	Topics            []types.Hash
 }
 
 // EventRecords is a struct that extends the default events with our events
 type EventRecords struct {
 	types.EventRecords
-	SmartContractModule_ContractCanceled []ContractCanceled //nolint:stylecheck,golint
+	TFTBridgeModule_BurnTransactionCreated []BurnTransactionCreated //nolint:stylecheck,golint
 }
 
 // Sign signs data with the private key under the given derivation path, returning the signature. Requires the subkey
