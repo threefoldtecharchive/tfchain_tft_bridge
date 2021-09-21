@@ -39,15 +39,14 @@ decl_event!(
 	pub enum Event<T>
 	where
 		AccountId = <T as system::Config>::AccountId,
-		Balance = BalanceOf<T>,
 		BlockNumber = <T as system::Config>::BlockNumber,
 	{
 		// Ming events
-		MintTransactionProposed(Vec<u8>, AccountId, Balance),
+		MintTransactionProposed(Vec<u8>, AccountId, u64),
 		MintTransactionVoted(Vec<u8>),
-		MintCompleted(AccountId, Balance, BlockNumber),
+		MintCompleted(AccountId, u64, BlockNumber),
 		// Burn events
-		BurnTransactionProposed(Vec<u8>, AccountId, Balance),
+		BurnTransactionProposed(Vec<u8>, AccountId, u64),
 		BurnTransactionSignatureAdded(Vec<u8>, Vec<u8>, AccountId),
 		BurnTransactionReady(Vec<u8>),
 	}
@@ -73,8 +72,8 @@ decl_error! {
 // Stellar -> TF Chain minting transaction.
 // if the votes field is larger then (number of validators / 2) + 1 , the transaction will be minted
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
-pub struct MintTransaction <BalanceOf, AccountId, BlockNumber>{
-	pub amount: BalanceOf,
+pub struct MintTransaction <AccountId, BlockNumber>{
+	pub amount: u64,
 	pub target: AccountId,
 	pub block: BlockNumber,
 	pub votes: u32,
@@ -94,9 +93,9 @@ decl_storage! {
 		pub Validators get(fn validator_accounts): Vec<T::AccountId>;
 
 		// MintTransaction storage maps will contain all the transaction for a Stellar -> TF Chain swap
-		pub MintTransactions get(fn mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
-		pub ExpiredMintTransactions get(fn expired_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
-		pub ExecutedMintTransactions get(fn executed_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>;
+		pub MintTransactions get(fn mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
+		pub ExpiredMintTransactions get(fn expired_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
+		pub ExecutedMintTransactions get(fn executed_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
 
 		// BurnTransaction storage maps will contain all the transaction for TF Chain -> Stellar swap
 		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) Vec<u8> => BurnTransaction<T::BlockNumber>;
@@ -133,7 +132,7 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn propose_burn_transaction(origin, transaction: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>){
+		fn propose_burn_transaction(origin, transaction: Vec<u8>, target: T::AccountId, amount: u64){
             let validator = ensure_signed(origin)?;
             Self::propose_stellar_burn_transaction(validator, transaction, target, amount)?;
 		}
@@ -164,8 +163,10 @@ decl_module! {
 }
 
 impl<T: Config> Module<T> {
-	pub fn mint_tft(tx_id: Vec<u8>, tx: MintTransaction<BalanceOf<T>, T::AccountId, T::BlockNumber>) {        
-        T::Currency::deposit_creating(&tx.target, tx.amount);
+	pub fn mint_tft(tx_id: Vec<u8>, tx: MintTransaction<T::AccountId, T::BlockNumber>) { 
+		let amount_as_balance = BalanceOf::<T>::saturated_from(tx.amount);
+       
+        T::Currency::deposit_creating(&tx.target, amount_as_balance);
 	
 		// Remove tx from storage
 		MintTransactions::<T>::remove(tx_id.clone());
@@ -193,18 +194,19 @@ impl<T: Config> Module<T> {
 			return Self::vote_stellar_mint_transaction(tx_id);
 		}
 
-		let amount_as_balance = BalanceOf::<T>::saturated_from(amount);
-
 		let now = <frame_system::Module<T>>::block_number();
 		let tx = MintTransaction {
-			amount: amount_as_balance,
+			amount,
 			target: target.clone(),
 			block: now,
-			votes: 1
+			votes: 0
 		};
 		MintTransactions::<T>::insert(tx_id.clone(), &tx);
 
-		Self::deposit_event(RawEvent::MintTransactionProposed(tx_id, target, amount_as_balance));
+		// Vote already
+		Self::vote_stellar_mint_transaction(tx_id.clone())?;
+
+		Self::deposit_event(RawEvent::MintTransactionProposed(tx_id, target, amount));
 
 		Ok(())
 	}
@@ -230,7 +232,7 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn propose_stellar_burn_transaction(validator: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+	pub fn propose_stellar_burn_transaction(validator: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: u64) -> DispatchResult {
 		// make sure we don't duplicate the transaction
 		ensure!(!BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionExists);
 		
