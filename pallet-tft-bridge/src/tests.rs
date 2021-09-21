@@ -72,7 +72,7 @@ fn proposing_burn_transaction_works() {
 	new_test_ext().execute_with(|| {
         prepare_validators();
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2));        
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec()));        
 	});
 }
 
@@ -80,7 +80,7 @@ fn proposing_burn_transaction_works() {
 fn proposing_burn_transaction_without_being_validator_fails() {
 	new_test_ext().execute_with(|| {
         assert_noop!(
-            TFTBridgeModule::propose_burn_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2),
+            TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec()),
             Error::<TestRuntime>::ValidatorNotExists
         );
 	});
@@ -91,17 +91,17 @@ fn burn_flow() {
 	new_test_ext().execute_with(|| {
         prepare_validators();
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "alice_sig".as_bytes().to_vec()));     
 
-        assert_ok!(TFTBridgeModule::add_sig_burn_transaction(Origin::signed(bob()), "some_tx".as_bytes().to_vec(), "some_sig".as_bytes().to_vec()));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, bob(), 2, "bob_sig".as_bytes().to_vec()));     
         
-        let mint_tx = TFTBridgeModule::burn_transactions("some_tx".as_bytes().to_vec());
-        assert_eq!(mint_tx.signatures.len(), 1);
+        let burn_tx = TFTBridgeModule::burn_transactions(1);
+        assert_eq!(burn_tx.signatures.len(), 2);
 
-        assert_ok!(TFTBridgeModule::add_sig_burn_transaction(Origin::signed(eve()), "some_tx".as_bytes().to_vec(), "some_other_eve_sig".as_bytes().to_vec()));
-        assert_ok!(TFTBridgeModule::add_sig_burn_transaction(Origin::signed(ferdie()), "some_tx".as_bytes().to_vec(), "some_other_ferdie_sig".as_bytes().to_vec()));
-        let executed_burn_tx = TFTBridgeModule::executed_burn_transactions("some_tx".as_bytes().to_vec());
-        assert_eq!(executed_burn_tx.signatures.len(), 3);
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(eve()), 1, bob(), 2, "some_other_eve_sig".as_bytes().to_vec()));
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(ferdie()), 1, bob(), 2, "some_other_ferdie_sig".as_bytes().to_vec()));
+        let executed_burn_tx = TFTBridgeModule::executed_burn_transactions(1);
+        assert_eq!(executed_burn_tx.signatures.len(), 4);
 	});
 }
 

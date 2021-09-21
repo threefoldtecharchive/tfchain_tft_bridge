@@ -46,9 +46,10 @@ decl_event!(
 		MintTransactionVoted(Vec<u8>),
 		MintCompleted(AccountId, u64, BlockNumber),
 		// Burn events
-		BurnTransactionProposed(Vec<u8>, AccountId, u64),
-		BurnTransactionSignatureAdded(Vec<u8>, Vec<u8>, AccountId),
-		BurnTransactionReady(Vec<u8>),
+		BurnTransactionCreated(u64, AccountId, u64),
+		BurnTransactionProposed(u64, AccountId, u64),
+		BurnTransactionSignatureAdded(u64, Vec<u8>),
+		BurnTransactionReady(u64),
 	}
 );
 
@@ -98,8 +99,10 @@ decl_storage! {
 		pub ExecutedMintTransactions get(fn executed_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
 
 		// BurnTransaction storage maps will contain all the transaction for TF Chain -> Stellar swap
-		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) Vec<u8> => BurnTransaction<T::BlockNumber>;
-		pub ExecutedBurnTransactions get(fn executed_burn_transactions): map hasher(blake2_128_concat) Vec<u8> => BurnTransaction<T::BlockNumber>;
+		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::BlockNumber>;
+		pub ExecutedBurnTransactions get(fn executed_burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::BlockNumber>;
+
+		pub BurnTransactionID: u64;
 	}
 }
 
@@ -121,7 +124,7 @@ decl_module! {
 
 		#[weight = 10_000]
 		fn swap_to_stellar(origin, target: T::AccountId, amount: BalanceOf<T>){
-            ensure_root(origin)?;
+            ensure_signed(origin)?;
             Self::burn_tft(target, amount);
 		}
 		
@@ -132,15 +135,9 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn propose_burn_transaction(origin, transaction: Vec<u8>, target: T::AccountId, amount: u64){
+		fn propose_burn_transaction_or_add_sig(origin, transaction: u64, target: T::AccountId, amount: u64, signature: Vec<u8>){
             let validator = ensure_signed(origin)?;
-            Self::propose_stellar_burn_transaction(validator, transaction, target, amount)?;
-		}
-		
-		#[weight = 10_000]
-		fn add_sig_burn_transaction(origin, transaction: Vec<u8>, signature: Vec<u8>){
-            let validator = ensure_signed(origin)?;
-            Self::add_stellar_sig_burn_transaction(validator, transaction, signature)?;
+            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction, target, amount, signature)?;
 		}
 
 		fn on_finalize(block: T::BlockNumber) {
@@ -180,6 +177,13 @@ impl<T: Config> Module<T> {
     pub fn burn_tft(target: T::AccountId, amount: BalanceOf<T>) {
         let imbalance = T::Currency::slash(&target, amount).0;
         T::Burn::on_unbalanced(imbalance);
+
+		let mut burn_id = BurnTransactionID::get();
+		burn_id +=1;
+		BurnTransactionID::put(burn_id);
+
+		let amount_as_u64: u64 = amount.saturated_into::<u64>();
+		Self::deposit_event(RawEvent::BurnTransactionCreated(burn_id, target, amount_as_u64));
 	}
 
 	pub fn propose_or_vote_stellar_mint_transaction(validator: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: u64) -> DispatchResult {
@@ -232,11 +236,14 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn propose_stellar_burn_transaction(validator: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: u64) -> DispatchResult {
-		// make sure we don't duplicate the transaction
-		ensure!(!BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionExists);
-		
+	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>) -> DispatchResult {
 		Self::check_if_validator_exists(validator.clone())?;
+		// make sure we don't duplicate the transaction
+		// ensure!(!BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionExists);
+		
+		if BurnTransactions::<T>::contains_key(tx_id) {
+			return Self::add_stellar_sig_burn_transaction(tx_id, signature);
+		}
 
 		let now = <frame_system::Module<T>>::block_number();
 		let tx = BurnTransaction {
@@ -245,32 +252,29 @@ impl<T: Config> Module<T> {
 		};
 		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
 
+		Self::add_stellar_sig_burn_transaction(tx_id, signature)?;
+
 		Self::deposit_event(RawEvent::BurnTransactionProposed(tx_id, target, amount));
 
 		Ok(())
 	}
 
-	pub fn add_stellar_sig_burn_transaction(validator: T::AccountId, tx_id: Vec<u8>, signature: Vec<u8>) -> DispatchResult {
-		// make sure tx exists
-		ensure!(BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionNotExists);
-		
-		Self::check_if_validator_exists(validator.clone())?;
-
-		let mut tx = BurnTransactions::<T>::get(&tx_id.clone());
+	pub fn add_stellar_sig_burn_transaction(tx_id: u64, signature: Vec<u8>) -> DispatchResult {
+		let mut tx = BurnTransactions::<T>::get(&tx_id);
 		// check if the signature already exists
 		ensure!(!tx.signatures.iter().any(|sig| sig == &signature), Error::<T>::BurnSignatureExists);
 
 		// add the signature
 		tx.signatures.push(signature.clone());
-		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
-		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id.clone(), signature, validator));
+		BurnTransactions::<T>::insert(tx_id, &tx);
+		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id, signature));
 		
 		let validators = Validators::<T>::get();
 		// if more then then the half of all validators
 		// submitted their signature we can emit an event that a transaction
 		// is ready to be submitted to the stellar network
 		if tx.signatures.len() >= (validators.len() / 2) + 1 {
-			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id.clone()));
+			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
 			ExecutedBurnTransactions::<T>::insert(tx_id, tx);
 		}
 
