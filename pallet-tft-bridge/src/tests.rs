@@ -35,7 +35,7 @@ fn proposing_mint_transaction_works() {
 	new_test_ext().execute_with(|| {
         assert_ok!(TFTBridgeModule::add_validator(RawOrigin::Root.into(), alice()));
 
-        assert_ok!(TFTBridgeModule::propose_mint_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2));        
+        assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2));        
 	});
 }
 
@@ -43,7 +43,7 @@ fn proposing_mint_transaction_works() {
 fn proposing_mint_transaction_without_being_validator_fails() {
 	new_test_ext().execute_with(|| {
         assert_noop!(
-            TFTBridgeModule::propose_mint_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2),
+            TFTBridgeModule::propose_or_vote_mint_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2),
             Error::<TestRuntime>::ValidatorNotExists
         );
 	});
@@ -54,14 +54,14 @@ fn mint_flow() {
 	new_test_ext().execute_with(|| {
         prepare_validators();
 
-        assert_ok!(TFTBridgeModule::propose_mint_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2));     
+        assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(Origin::signed(alice()), "some_tx".as_bytes().to_vec(), bob(), 2));     
 
-        assert_ok!(TFTBridgeModule::vote_mint_transaction(Origin::signed(bob()), "some_tx".as_bytes().to_vec()));     
+        assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(Origin::signed(bob()), "some_tx".as_bytes().to_vec(), bob(), 2));     
         
         let mint_tx = TFTBridgeModule::mint_transactions("some_tx".as_bytes().to_vec());
         assert_eq!(mint_tx.votes, 2);
 
-        assert_ok!(TFTBridgeModule::vote_mint_transaction(Origin::signed(eve()), "some_tx".as_bytes().to_vec()));
+        assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(Origin::signed(eve()), "some_tx".as_bytes().to_vec(), bob(), 2));
         let executed_mint_tx = TFTBridgeModule::executed_mint_transactions("some_tx".as_bytes().to_vec());
         assert_eq!(executed_mint_tx.votes, 3);
 	});

@@ -22,8 +22,7 @@ Contains following extrinsic to call:
 - `add_validator` (root call for the admin to setup the bridge)
 - `remove_validator` (root call for the admin to setup the bridge)
 #### Stellar -> TF Chain (minting on TF Chain)
-- `propose_mint_transaction(transaction, target, amount)`
-- `vote_mint_transaction(transactionHash)`
+- `propose_or_vote_mint_transaction(transaction, target, amount)`
 #### TF Chain -> Stellar (burning on TF Chain)
 - `propose_burn_transaction(transaction, target, amount)`
 - `add_sig_burn_transaction(transactionHash, signature)`
@@ -43,7 +42,7 @@ More will be explained below
 
 A user looks up the Stellar bridge wallet address for a swap to TF Chain. He then sends a transaction with some amount to the bridge wallet. 
 
-Now the validator daemons monitoring the bridge wallet will execute a `propose_mint_transaction`. Only one of the validator daemons will get a success executing this transaction, the other daemons will get a failed execution because the transaction is already proposed by another daemon. With this failed execution they will create a `vote_mint_transaction`. This will vote that transaction is a valid transaction. The daemons know this is a valid transaction because they all are monitoring the bridge wallet.
+Now the validator daemons monitoring the bridge wallet will see an incoming transaction and execute a `propose_or_vote_mint_transaction` on TF Chain. If the transaction has already been executed before, this will fail.
 
 If more then *(number of validators / 2) + 1* voted that this mint transaction is valid, then the chain will execute a `mint` on the target address for the specified amount of tokens.
 

@@ -61,6 +61,7 @@ decl_error! {
 		TransactionValidatorExists,
 		TransactionValidatorNotExists,
 		MintTransactionExists,
+		MintTransactionAlreadyExecuted,
 		MintTransactionNotExists,
 		BurnTransactionExists,
 		BurnTransactionNotExists,
@@ -126,15 +127,9 @@ decl_module! {
 		}
 		
 		#[weight = 10_000]
-		fn propose_mint_transaction(origin, transaction: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>){
+		fn propose_or_vote_mint_transaction(origin, transaction: Vec<u8>, target: T::AccountId, amount: u64){
             let validator = ensure_signed(origin)?;
-            Self::propose_stellar_mint_transaction(validator, transaction, target, amount)?;
-		}
-		
-		#[weight = 10_000]
-		fn vote_mint_transaction(origin, transaction: Vec<u8>){
-            let validator = ensure_signed(origin.clone())?;
-			Self::vote_stellar_mint_transaction(validator, transaction)?;
+            Self::propose_or_vote_stellar_mint_transaction(validator, transaction, target, amount)?;
 		}
 
 		#[weight = 10_000]
@@ -186,108 +181,98 @@ impl<T: Config> Module<T> {
         T::Burn::on_unbalanced(imbalance);
 	}
 
-	pub fn propose_stellar_mint_transaction(origin: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+	pub fn propose_or_vote_stellar_mint_transaction(validator: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: u64) -> DispatchResult {
+		Self::check_if_validator_exists(validator.clone())?;
+		
+		// check if it already has been executed in the past
+		ensure!(!ExecutedMintTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::MintTransactionAlreadyExecuted);
+		
 		// make sure we don't duplicate the transaction
-		ensure!(!MintTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::MintTransactionExists);
-		
-		let validators = Validators::<T>::get();
-		match validators.binary_search(&origin) {
-			Ok(_) => {
-				let now = <frame_system::Module<T>>::block_number();
-				let tx = MintTransaction {
-					amount,
-					target: target.clone(),
-					block: now,
-					votes: 1
-				};
-				MintTransactions::<T>::insert(tx_id.clone(), &tx);
-
-				Self::deposit_event(RawEvent::MintTransactionProposed(tx_id, target, amount));
-
-				Ok(())
-			},
-			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
+		// ensure!(!MintTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::MintTransactionExists);
+		if MintTransactions::<T>::contains_key(tx_id.clone()) {
+			return Self::vote_stellar_mint_transaction(tx_id);
 		}
+
+		let amount_as_balance = BalanceOf::<T>::saturated_from(amount);
+
+		let now = <frame_system::Module<T>>::block_number();
+		let tx = MintTransaction {
+			amount: amount_as_balance,
+			target: target.clone(),
+			block: now,
+			votes: 1
+		};
+		MintTransactions::<T>::insert(tx_id.clone(), &tx);
+
+		Self::deposit_event(RawEvent::MintTransactionProposed(tx_id, target, amount_as_balance));
+
+		Ok(())
 	}
 
-	pub fn vote_stellar_mint_transaction(validator: T::AccountId, tx_id: Vec<u8>) -> DispatchResult {
-		ensure!(MintTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::MintTransactionNotExists);
-		
+	pub fn vote_stellar_mint_transaction(tx_id: Vec<u8>) -> DispatchResult {		
+		let mut mint_transaction = MintTransactions::<T>::get(tx_id.clone());
+		// increment amount of votes
+		mint_transaction.votes += 1;
+
+		// deposit voted event
+		Self::deposit_event(RawEvent::MintTransactionVoted(tx_id.clone()));
+
+		// update the transaction
+		MintTransactions::<T>::insert(&tx_id, &mint_transaction);
+
 		let validators = Validators::<T>::get();
-		match validators.binary_search(&validator) {
-			Ok(_) => {
-				let mut mint_transaction = MintTransactions::<T>::get(tx_id.clone());
-				// increment amount of votes
-				mint_transaction.votes += 1;
-
-				// deposit voted event
-				Self::deposit_event(RawEvent::MintTransactionVoted(tx_id.clone()));
-
-				// update the transaction
-				MintTransactions::<T>::insert(&tx_id, &mint_transaction);
-
-				// If majority aggrees on the transaction, mint tokens to target address
-				if mint_transaction.votes as usize >= (validators.len() / 2) + 1 {
-					debug::info!("enough votes, minting transaction...");
-					Self::mint_tft(tx_id.clone(), mint_transaction);
-				}
-
-				Ok(())
-			},
-			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
+		// If majority aggrees on the transaction, mint tokens to target address
+		if mint_transaction.votes as usize >= (validators.len() / 2) + 1 {
+			debug::info!("enough votes, minting transaction...");
+			Self::mint_tft(tx_id.clone(), mint_transaction);
 		}
+
+		Ok(())
 	}
 
-	pub fn propose_stellar_burn_transaction(origin: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+	pub fn propose_stellar_burn_transaction(validator: T::AccountId, tx_id: Vec<u8>, target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
 		// make sure we don't duplicate the transaction
 		ensure!(!BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionExists);
 		
-		let validators = Validators::<T>::get();
-		match validators.binary_search(&origin) {
-			Ok(_) => {
-				let now = <frame_system::Module<T>>::block_number();
-				let tx = BurnTransaction {
-					block: now,
-					signatures: Vec::new()
-				};
-				BurnTransactions::<T>::insert(tx_id.clone(), &tx);
+		Self::check_if_validator_exists(validator.clone())?;
 
-				Self::deposit_event(RawEvent::BurnTransactionProposed(tx_id, target, amount));
+		let now = <frame_system::Module<T>>::block_number();
+		let tx = BurnTransaction {
+			block: now,
+			signatures: Vec::new()
+		};
+		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
 
-				Ok(())
-			},
-			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
-		}
+		Self::deposit_event(RawEvent::BurnTransactionProposed(tx_id, target, amount));
+
+		Ok(())
 	}
 
-	pub fn add_stellar_sig_burn_transaction(origin: T::AccountId, tx_id: Vec<u8>, signature: Vec<u8>) -> DispatchResult {
+	pub fn add_stellar_sig_burn_transaction(validator: T::AccountId, tx_id: Vec<u8>, signature: Vec<u8>) -> DispatchResult {
 		// make sure tx exists
 		ensure!(BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionNotExists);
 		
+		Self::check_if_validator_exists(validator.clone())?;
+
+		let mut tx = BurnTransactions::<T>::get(&tx_id.clone());
+		// check if the signature already exists
+		ensure!(!tx.signatures.iter().any(|sig| sig == &signature), Error::<T>::BurnSignatureExists);
+
+		// add the signature
+		tx.signatures.push(signature.clone());
+		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
+		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id.clone(), signature, validator));
+		
 		let validators = Validators::<T>::get();
-		match validators.binary_search(&origin) {
-			Ok(_) => {				
-				let mut tx = BurnTransactions::<T>::get(&tx_id.clone());
-				// check if the signature already exists
-				ensure!(!tx.signatures.iter().any(|sig| sig == &signature), Error::<T>::BurnSignatureExists);
-
-				// add the signature
-				tx.signatures.push(signature.clone());
-				BurnTransactions::<T>::insert(tx_id.clone(), &tx);
-				Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id.clone(), signature, origin));
-
-				// if more then then the half of all validators
-				// submitted their signature we can emit an event that a transaction
-				// is ready to be submitted to the stellar network
-				if tx.signatures.len() >= (validators.len() / 2) + 1 {
-					Self::deposit_event(RawEvent::BurnTransactionReady(tx_id.clone()));
-					ExecutedBurnTransactions::<T>::insert(tx_id, tx);
-				}
-
-				Ok(())
-			},
-			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
+		// if more then then the half of all validators
+		// submitted their signature we can emit an event that a transaction
+		// is ready to be submitted to the stellar network
+		if tx.signatures.len() >= (validators.len() / 2) + 1 {
+			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id.clone()));
+			ExecutedBurnTransactions::<T>::insert(tx_id, tx);
 		}
+
+		Ok(())
 	}
 
 	pub fn add_validator_account(target: T::AccountId) -> DispatchResult {
@@ -312,6 +297,16 @@ impl<T: Config> Module<T> {
 			Ok(index) => {
 				validators.remove(index);
 				Validators::<T>::put(validators);
+				Ok(())
+			},
+			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
+		}
+	}
+
+	fn check_if_validator_exists(validator: T::AccountId) -> DispatchResult {
+		let validators = Validators::<T>::get();
+		match validators.binary_search(&validator) {
+			Ok(_) => {
 				Ok(())
 			},
 			Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
