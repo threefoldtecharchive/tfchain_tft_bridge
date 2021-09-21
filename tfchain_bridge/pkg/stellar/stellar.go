@@ -2,7 +2,6 @@ package stellar
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -10,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/gologme/log"
+	"github.com/rs/zerolog/log"
 	"github.com/stellar/go/amount"
 	"github.com/stellar/go/clients/horizonclient"
 	"github.com/stellar/go/keypair"
@@ -176,7 +175,7 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn txnbuild.Tran
 	}
 	// if the transaction exists, return with nil error
 	if exists {
-		log.Info("Transaction with this hash already executed, skipping now..")
+		log.Info().Msg("Transaction with this hash already executed, skipping now..")
 		return nil
 	}
 
@@ -214,7 +213,7 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn txnbuild.Tran
 	tx, err = tx.Sign(w.GetNetworkPassPhrase(), w.keypair)
 	if err != nil {
 		if hError, ok := err.(*horizonclient.Error); ok {
-			log.Error("Error submitting tx", "extras", hError.Problem.Extras)
+			log.Error().Msgf("Error submitting tx %+v", hError.Problem.Extras)
 		}
 		return errors.Wrap(err, "failed to sign transaction with keypair")
 	}
@@ -223,11 +222,11 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn txnbuild.Tran
 	txResult, err := client.SubmitTransaction(tx)
 	if err != nil {
 		if hError, ok := err.(*horizonclient.Error); ok {
-			log.Error("Error submitting tx", "extras", hError.Problem.Extras)
+			log.Error().Msgf("Error submitting tx %+v", hError.Problem.Extras)
 		}
 		return errors.Wrap(err, "error submitting transaction")
 	}
-	log.Info(fmt.Sprintf("transaction: %s submitted to the stellar network..", txResult.Hash))
+	log.Info().Msg(fmt.Sprintf("transaction: %s submitted to the stellar network..", txResult.Hash))
 
 	w.stellarTransactionStorage.StoreTransactionWithMemo(tx)
 	if err != nil {
@@ -237,12 +236,8 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn txnbuild.Tran
 	return nil
 }
 
-const ERC20AddressLength = 20
-
-type ERC20Address [ERC20AddressLength]byte
-
 // mint handler
-type mint func(ERC20Address, *big.Int, string) error
+type mint func(string, *big.Int, string) error
 
 //MonitorBridgeAccountAndMint is a blocking function that keeps monitoring
 // the bridge account on the Stellar network for new transactions and calls the
@@ -252,23 +247,23 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 		if !tx.Successful {
 			return
 		}
-		log.Info("Received transaction on bridge stellar account", "hash", tx.Hash)
+		log.Info().Str("hash", tx.Hash).Msg("Received transaction on bridge stellar account")
 
-		data, err := base64.StdEncoding.DecodeString(tx.Memo)
-		if err != nil {
-			log.Error("error decoding transaction memo", "error", err.Error())
-			return
-		}
+		// data, err := base64.StdEncoding.DecodeString(tx.Memo)
+		// if err != nil {
+		// 	log.Error("error decoding transaction memo", "error", err.Error())
+		// 	return
+		// }
 
-		if len(data) != 20 {
-			return
-		}
-		var ethAddress ERC20Address
-		copy(ethAddress[0:20], data)
+		// if len(data) != 20 {
+		// 	return
+		// }
+		// var subAddress SubstrateAddress
+		// copy(subAddress[0:20], data)
 
 		effects, err := w.getTransactionEffects(tx.Hash)
 		if err != nil {
-			log.Error("error while fetching transaction effects:", err.Error())
+			log.Error().Str("error while fetching transaction effects:", err.Error())
 			return
 		}
 
@@ -290,11 +285,11 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 
 				depositedAmount := big.NewInt(int64(parsedAmount))
 
-				err = mintFn(ethAddress, depositedAmount, tx.Hash)
+				err = mintFn(tx.Account, depositedAmount, tx.Hash)
 				for err != nil {
-					log.Error(fmt.Sprintf("Error occured while minting: %s", err.Error()))
+					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
 					if err == errInsufficientDepositAmount {
-						log.Warn("User is trying to swap less than the fee amount, refunding now", "amount", parsedAmount)
+						log.Warn().Msgf("User is trying to swap less than the fee amount, refunding now", "amount", parsedAmount)
 						ops, err := w.getOperationEffect(tx.Hash)
 						if err != nil {
 							continue
@@ -304,10 +299,10 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 								paymentOpation := op.(operations.Payment)
 
 								if paymentOpation.To == w.keypair.Address() {
-									log.Warn("Calling refund")
+									log.Warn().Msg("Calling refund")
 									err := w.CreateAndSubmitRefund(context.Background(), paymentOpation.From, uint64(parsedAmount), tx.Hash, true)
 									if err != nil {
-										log.Error("error while trying to refund user", "err", err.Error())
+										log.Error().Msgf("error while trying to refund user", "err", err.Error())
 									}
 								}
 							}
@@ -315,15 +310,19 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 						return
 					}
 
+					if err == pkg.ErrTransactionAlreadyMinted {
+						return
+					}
+
 					select {
 					case <-ctx.Done():
 						return
 					case <-time.After(10 * time.Second):
-						err = mintFn(ethAddress, depositedAmount, tx.Hash)
+						err = mintFn(tx.Account, depositedAmount, tx.Hash)
 					}
 				}
 				if w.config.StellarFeeWallet != "" {
-					log.Info("Trying to transfer the fees generated to the fee wallet", "address", w.config.StellarFeeWallet)
+					log.Info().Msgf("Trying to transfer the fees generated to the fee wallet", "address", w.config.StellarFeeWallet)
 
 					// convert tx hash string to bytes
 					parsedMessage, err := hex.DecodeString(tx.Hash)
@@ -335,17 +334,17 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 
 					err = w.CreateAndSubmitFeepayment(context.Background(), depositFee, memo)
 					if err != nil {
-						log.Error("error while sending fee to the fee wallet", "err", err.Error())
+						log.Error().Msgf("error while sending fee to the fee wallet", "err", err.Error())
 					}
 				}
 
-				log.Info("Mint succesfull, saving cursor now")
+				log.Info().Msg("Mint succesfull, saving cursor now")
 
 				// save cursor
 				cursor := tx.PagingToken()
 				err = persistency.SaveStellarCursor(cursor)
 				if err != nil {
-					log.Error("error while saving cursor:", err.Error())
+					log.Error().Msgf("error while saving cursor:", err.Error())
 					return
 				}
 			}
@@ -356,7 +355,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 	// get saved cursor
 	blockHeight, err := persistency.GetHeight()
 	for err != nil {
-		log.Warn("Error getting the bridge persistency", "error", err)
+		log.Warn().Msgf("Error getting the bridge persistency", "error", err)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -389,10 +388,10 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 	}
 
 	opRequest := horizonclient.TransactionRequest{
-		ForAccount: w.keypair.Address(),
+		ForAccount: w.config.StellarBridgeAccount,
 		Cursor:     cursor,
 	}
-	log.Info("Start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
+	log.Info().Msgf("Start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
 
 	for {
 		if ctx.Err() != nil {
@@ -401,7 +400,7 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 
 		response, err := client.Transactions(opRequest)
 		if err != nil {
-			log.Info("Error getting transactions for stellar account", "error", err)
+			log.Info().Msgf("Error getting transactions for stellar account", "error", err)
 			select {
 			case <-ctx.Done():
 				return nil

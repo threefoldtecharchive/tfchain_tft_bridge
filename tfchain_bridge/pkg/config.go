@@ -1,5 +1,7 @@
 package pkg
 
+import "errors"
+
 type BridgeConfig struct {
 	TfchainURL          string
 	TfchainSeed         string
@@ -17,3 +19,5 @@ type StellarConfig struct {
 	StellarSeed      string
 	StellarFeeWallet string
 }
+
+var ErrTransactionAlreadyMinted = errors.New("transaction is already minted")

@@ -41,6 +41,10 @@ func (a AccountID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(address)
 }
 
+func FromEd25519Bytes(address []byte) (string, error) {
+	return subkey.SS58Address(address, network)
+}
+
 // FromAddress creates an AccountID from a SS58 address
 func FromAddress(address string) (account AccountID, err error) {
 	bytes := base58.Decode(address)

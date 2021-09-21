@@ -29,6 +29,7 @@ require (
 	github.com/jbenet/go-base58 v0.0.0-20150317085156-6237cf65f3a6
 	github.com/klauspost/compress v1.9.5 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
+	github.com/libp2p/go-libp2p-core v0.10.0
 	github.com/manucorporat/sse v0.0.0-20160126180136-ee05b128a739 // indirect
 	github.com/mimoo/StrobeGo v0.0.0-20181016162300-f8f6d4d2b643 // indirect
 	github.com/pierrec/xxHash v0.1.5 // indirect
@@ -46,4 +47,12 @@ require (
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+)
+
+require (
+	github.com/btcsuite/btcd v0.20.1-beta // indirect
+	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/libp2p/go-openssl v0.0.7 // indirect
+	github.com/minio/sha256-simd v0.1.1 // indirect
+	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 )
