@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/centrifuge/go-substrate-rpc-client/v3/rpc/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -32,7 +33,7 @@ func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, bu
 	if err != nil {
 		return err
 	}
-	defer sub.Unsubscribe()
+	defer unsubscribe(sub)
 
 	// outer for loop for subscription notifications
 	for {
@@ -48,7 +49,7 @@ func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, bu
 			events := EventRecords{}
 			err = types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(s.meta, &events)
 			if err != nil {
-				return ErrFailedToDecode
+				log.Err(ErrFailedToDecode)
 			}
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
@@ -62,6 +63,11 @@ func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, bu
 	}
 }
 
+func unsubscribe(sub *state.StorageSubscription) {
+	log.Info().Msg("unsubscribing from tfchain")
+	sub.Unsubscribe()
+}
+
 func (s *Substrate) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string) error {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.propose_burn_transaction_or_add_sig",
 		txID, target, types.U64(amount.Uint64()), signature,
@@ -73,6 +79,21 @@ func (s *Substrate) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint
 
 	if _, err := s.call(identity, c); err != nil {
 		return errors.Wrap(err, "failed to propose or add sig for a burn transaction")
+	}
+
+	return nil
+}
+
+func (s *Substrate) SetBurnTransactionExecuted(identity *Identity, txID uint64) error {
+	log.Info().Msg("setting burn transaction as executed")
+	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_burn_transaction_executed", txID)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create call")
+	}
+
+	if _, err := s.call(identity, c); err != nil {
+		return errors.Wrap(err, "failed to set burn transaction executed")
 	}
 
 	return nil

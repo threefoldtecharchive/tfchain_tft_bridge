@@ -65,3 +65,27 @@ func (s *Substrate) getVersion(b types.StorageDataRaw) (uint32, error) {
 
 	return ver.Version, nil
 }
+
+// func (s *Substrate) SubscribeToNewBlockHeads() error {
+// 	sub, err := s.cl.RPC.Chain.SubscribeNewHeads()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer sub.Unsubscribe()
+
+// 	count := 0
+
+// 	for {
+// 		head := <-sub.Chan()
+// 		fmt.Printf("Chain is at block: #%v\n", head.Number)
+// 		count++
+
+// 		hash, _ := s.cl.RPC.Chain.GetBlockHash(uint64(head.Number))
+
+// 		meta, err := s.cl.RPC.State.GetMetadata(hash)
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 	}
+// }

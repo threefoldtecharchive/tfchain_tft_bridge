@@ -217,7 +217,12 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return err
 	}
 
-	return bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), uint64(burnReadyEvent.BurnTransactionID), false, burnTx.Signatures)
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), uint64(burnReadyEvent.BurnTransactionID), false, burnTx.Signatures)
+	if err != nil {
+		return err
+	}
+
+	return bridge.subClient.SetBurnTransactionExecuted(&bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
 }
 
 func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {

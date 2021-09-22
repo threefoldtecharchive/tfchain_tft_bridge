@@ -50,6 +50,7 @@ decl_event!(
 		BurnTransactionProposed(u64, AccountId, u64),
 		BurnTransactionSignatureAdded(u64, Vec<u8>),
 		BurnTransactionReady(u64),
+		BurnTransactionProcessed(u64),
 	}
 );
 
@@ -138,10 +139,17 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn propose_burn_transaction_or_add_sig(origin, transaction: u64, target: T::AccountId, amount: u64, signature: Vec<u8>){
+		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>){
             let validator = ensure_signed(origin)?;
-            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction, target, amount, signature)?;
+            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction_id, target, amount, signature)?;
 		}
+
+		#[weight = 10_000]
+		fn set_burn_transaction_executed(origin, transaction_id: u64) {
+			let validator = ensure_signed(origin)?;
+			Self::set_stellar_burn_transaction_executed(validator, transaction_id)?;
+		}
+
 
 		fn on_finalize(block: T::BlockNumber) {
 			let current_block_u64: u64 = block.saturated_into::<u64>();
@@ -283,6 +291,22 @@ impl<T: Config> Module<T> {
 			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
 			BurnTransactions::<T>::insert(tx_id, tx);
 		}
+
+		Ok(())
+	}
+
+	pub fn set_stellar_burn_transaction_executed(validator: T::AccountId, tx_id: u64) -> DispatchResult {
+		Self::check_if_validator_exists(validator)?;
+
+		ensure!(!ExecutedBurnTransactions::<T>::contains_key(tx_id), Error::<T>::BurnTransactionAlreadyExecuted);
+		ensure!(BurnTransactions::<T>::contains_key(tx_id), Error::<T>::BurnTransactionNotExists);
+
+		let tx = BurnTransactions::<T>::get(tx_id);
+
+		BurnTransactions::<T>::remove(tx_id);
+		ExecutedBurnTransactions::<T>::insert(tx_id, tx);
+
+		Self::deposit_event(RawEvent::BurnTransactionProcessed(tx_id));
 
 		Ok(())
 	}
