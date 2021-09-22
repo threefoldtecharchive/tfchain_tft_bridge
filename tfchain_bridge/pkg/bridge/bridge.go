@@ -94,8 +94,8 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 }
 
 func (bridge *Bridge) Start(ctx context.Context) error {
-	log.Info().Msg("starting bridge...")
 	go func() {
+		log.Info().Msg("starting bridge...")
 		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.blockPersistency); err != nil {
 			panic(err)
 		}
@@ -104,10 +104,14 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	// Channel where withdrawal events are stored
 	// Should only be read from by the master bridge
 	burnChan := make(chan substrate.BurnTransactionCreated)
+	burnReadyChan := make(chan substrate.BurnTransactionReady)
 
 	go func() {
-		if err := bridge.subClient.SubscribeBurnEvents(burnChan); err != nil {
-			panic(err)
+		log.Info().Msg("started subs...")
+		if err := bridge.subClient.SubscribeBurnEvents(burnChan, burnReadyChan); err != nil {
+			if err != substrate.ErrFailedToDecode {
+				panic(err)
+			}
 		}
 	}()
 
@@ -116,8 +120,16 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		for {
 			select {
 			case burn := <-burnChan:
-				{
-					log.Info().Msgf("received burn event %+v", burn)
+				log.Info().Msgf("received burn event %+v", burn)
+				err := bridge.proposeBurnTransactionOrAddSig(ctx, burn)
+				if err != nil {
+					log.Error().Msgf("error occurred while proposing burn tx %+v", err)
+				}
+			case burnReady := <-burnReadyChan:
+				log.Info().Msgf("received burn ready event %+v", burnReady)
+				err := bridge.submitBurnTransaction(ctx, burnReady)
+				if err != nil {
+					log.Error().Msgf("error occurred while submitting burn tx %+v", err)
 				}
 			}
 		}
@@ -136,7 +148,7 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 
 	if minted {
 		log.Error().Msgf("transaction with hash %s is already minted", txID)
-		return pkg.ErrTransactionAlreadyMinted
+		return nil
 	}
 
 	if depositedAmount.Cmp(bridge.depositFee) <= 0 {
@@ -145,6 +157,8 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	}
 	amount := &big.Int{}
 	amount.Sub(depositedAmount, bridge.depositFee)
+	// multiply the amount of tokens to be minted * the multiplier
+	amount.Mul(amount, big.NewInt(bridge.config.TokenMultiplier))
 
 	substrateAddressBytes, err := getSubstrateAddressFromStellarAddress(receiver)
 	if err != nil {
@@ -171,6 +185,41 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	return nil
 }
 
+func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated) error {
+	stellarAddress, err := getStellarAddressFromSubstrateAccountID(burnCreatedEvent.Target)
+	if err != nil {
+		return err
+	}
+
+	signature, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, uint64(burnCreatedEvent.Amount), uint64(burnCreatedEvent.BurnTransactionID), false)
+	if err != nil {
+		return err
+	}
+
+	amount := big.NewInt(int64(burnCreatedEvent.Amount))
+	err = bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) error {
+	burnTx, err := bridge.subClient.GetBurnTransaction(&bridge.identity, burnReadyEvent.BurnTransactionID)
+	if err != nil {
+		return err
+	}
+
+	log.Info().Msgf("burn tx: %+v", burnTx)
+	stellarAddress, err := getStellarAddressFromSubstrateAccountID(substrate.AccountID(burnTx.Target))
+	if err != nil {
+		return err
+	}
+
+	return bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), uint64(burnReadyEvent.BurnTransactionID), false, burnTx.Signatures)
+}
+
 func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {
 	versionbyte, pubkeydata, err := strkey.DecodeAny(address)
 	if err != nil {
@@ -191,6 +240,10 @@ func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {
 	}
 
 	return bytes, nil
+}
+
+func getStellarAddressFromSubstrateAccountID(accountID substrate.AccountID) (string, error) {
+	return strkey.Encode(strkey.VersionByteAccountID, accountID.PublicKey())
 }
 
 func (bridge *Bridge) Close() error {

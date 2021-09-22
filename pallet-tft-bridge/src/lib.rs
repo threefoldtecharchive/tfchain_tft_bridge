@@ -66,6 +66,7 @@ decl_error! {
 		BurnTransactionExists,
 		BurnTransactionNotExists,
 		BurnSignatureExists,
+		BurnTransactionAlreadyExecuted
 	}
 }
 
@@ -84,8 +85,10 @@ pub struct MintTransaction <AccountId, BlockNumber>{
 // TF Chain -> Stellar burn transaction
 // Transaction is ready when (number of validators / 2) + 1 signatures are present
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
-pub struct BurnTransaction <BlockNumber> {
+pub struct BurnTransaction <AccountId, BlockNumber> {
 	pub block: BlockNumber,
+	pub amount: u64,
+	pub target: AccountId,
 	pub signatures: Vec<Vec<u8>>
 }
 
@@ -99,8 +102,8 @@ decl_storage! {
 		pub ExecutedMintTransactions get(fn executed_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
 
 		// BurnTransaction storage maps will contain all the transaction for TF Chain -> Stellar swap
-		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::BlockNumber>;
-		pub ExecutedBurnTransactions get(fn executed_burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::BlockNumber>;
+		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::AccountId, T::BlockNumber>;
+		pub ExecutedBurnTransactions get(fn executed_burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::AccountId, T::BlockNumber>;
 
 		pub BurnTransactionID: u64;
 	}
@@ -237,9 +240,10 @@ impl<T: Config> Module<T> {
 	}
 
 	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>) -> DispatchResult {
+		// check if it already has been executed in the past
+		ensure!(!ExecutedBurnTransactions::<T>::contains_key(tx_id), Error::<T>::BurnTransactionAlreadyExecuted);
+
 		Self::check_if_validator_exists(validator.clone())?;
-		// make sure we don't duplicate the transaction
-		// ensure!(!BurnTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::BurnTransactionExists);
 		
 		if BurnTransactions::<T>::contains_key(tx_id) {
 			return Self::add_stellar_sig_burn_transaction(tx_id, signature);
@@ -248,6 +252,8 @@ impl<T: Config> Module<T> {
 		let now = <frame_system::Module<T>>::block_number();
 		let tx = BurnTransaction {
 			block: now,
+			target: target.clone(),
+			amount,
 			signatures: Vec::new()
 		};
 		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
@@ -275,7 +281,7 @@ impl<T: Config> Module<T> {
 		// is ready to be submitted to the stellar network
 		if tx.signatures.len() >= (validators.len() / 2) + 1 {
 			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
-			ExecutedBurnTransactions::<T>::insert(tx_id, tx);
+			BurnTransactions::<T>::insert(tx_id, tx);
 		}
 
 		Ok(())
