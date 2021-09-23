@@ -39,6 +39,7 @@ type StellarWallet struct {
 	keypair                   *keypair.Full
 	config                    *pkg.StellarConfig
 	stellarTransactionStorage *StellarTransactionStorage
+	signatureCount            int
 }
 
 func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarWallet, error) {
@@ -55,6 +56,13 @@ func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarW
 		stellarTransactionStorage: stellarTransactionStorage,
 	}
 
+	account, err := w.GetAccountDetails(config.StellarBridgeAccount)
+	if err != nil {
+		return nil, err
+	}
+	log.Info().Msgf("required signature count %d", int(account.Thresholds.MedThreshold))
+	w.signatureCount = int(account.Thresholds.MedThreshold)
+
 	return w, nil
 }
 
@@ -66,17 +74,17 @@ func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, tar
 
 	// txnBuild.Memo = txnbuild.MemoHash()
 
-	txn, err := w.createTransaction(ctx, txnBuild)
+	txn, err := w.createTransaction(ctx, txnBuild, true)
 	if err != nil {
 		return "", err
 	}
 
 	signatures := txn.Signatures()
 
-	return string(signatures[0].Signature), nil
+	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
 }
 
-func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txID uint64, includeWithdrawFee bool, signatures [][]byte) error {
+func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txID uint64, includeWithdrawFee bool, signatures []pkg.StellarSignature) error {
 	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
 	if err != nil {
 		return err
@@ -84,17 +92,29 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 
 	// txnBuild.Memo = txnbuild.MemoHash()
 
-	txn, err := w.createTransaction(ctx, txnBuild)
+	txn, err := w.createTransaction(ctx, txnBuild, false)
 	if err != nil {
 		return err
 	}
 
-	for _, sig := range signatures {
-		base64sig := base64.RawStdEncoding.EncodeToString(sig)
-		txn.AddSignatureBase64(w.GetNetworkPassPhrase(), w.keypair.Address(), base64sig)
+	if len(signatures) < w.signatureCount {
+		return errors.New("not enough signatures, aborting")
+	}
+
+	requiredSignatures := signatures[:w.signatureCount]
+	for _, sig := range requiredSignatures {
+		log.Info().Msgf("ADDING SIGNATURE %s, ACCOUNT %s", string(sig.Signature), string(sig.StellarAddress))
+		txn, err = txn.AddSignatureBase64(w.GetNetworkPassPhrase(), string(sig.StellarAddress), string(sig.Signature))
+		if err != nil {
+			return err
+		}
 	}
 
 	return w.submitTransaction(ctx, txn)
+}
+
+func (w *StellarWallet) GetKeypair() *keypair.Full {
+	return w.keypair
 }
 
 // func (w *StellarWallet) CreateAndSubmitPayment(ctx context.Context, target string, amount uint64, receiver common.Address, blockheight uint64, txHash common.Hash, message string, includeWithdrawFee bool) error {
@@ -130,7 +150,7 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 // // CreateAndSubmitFeepayment creates and submites a payment to the fee wallet
 // // only an amount and hash needs to be specified
 // func (w *StellarWallet) CreateAndSubmitFeepayment(ctx context.Context, amount uint64, txHash common.Hash) error {
-// 	feeWalletAddress := w.keypair.Address()
+// 	feeWalletAddress := w.config.StellarBridgeAccount
 // 	if w.config.StellarFeeWallet != "" {
 // 		feeWalletAddress = w.config.StellarFeeWallet
 // 	}
@@ -151,7 +171,7 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 		return txnbuild.TransactionParams{}, errors.New("invalid amount")
 	}
 
-	sourceAccount, err := w.GetAccountDetails(w.keypair.Address())
+	sourceAccount, err := w.GetAccountDetails(w.config.StellarBridgeAccount)
 	if err != nil {
 		return txnbuild.TransactionParams{}, errors.Wrap(err, "failed to get source account")
 	}
@@ -185,7 +205,7 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 
 	txnBuild := txnbuild.TransactionParams{
 		Operations:           paymentOperations,
-		Timebounds:           txnbuild.NewTimeout(300),
+		Timebounds:           txnbuild.NewInfiniteTimeout(),
 		SourceAccount:        &sourceAccount,
 		BaseFee:              txnbuild.MinBaseFee * 3,
 		IncrementSequenceNum: true,
@@ -194,7 +214,7 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 	return txnBuild, nil
 }
 
-func (w *StellarWallet) createTransaction(ctx context.Context, txn txnbuild.TransactionParams) (*txnbuild.Transaction, error) {
+func (w *StellarWallet) createTransaction(ctx context.Context, txn txnbuild.TransactionParams, sign bool) (*txnbuild.Transaction, error) {
 	tx, err := txnbuild.NewTransaction(txn)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build transaction")
@@ -211,12 +231,14 @@ func (w *StellarWallet) createTransaction(ctx context.Context, txn txnbuild.Tran
 		return nil, errors.New("transaction with this has already executed")
 	}
 
-	tx, err = tx.Sign(w.GetNetworkPassPhrase(), w.keypair)
-	if err != nil {
-		if hError, ok := err.(*horizonclient.Error); ok {
-			log.Error().Msgf("Error submitting tx %+v", hError.Problem.Extras)
+	if sign {
+		tx, err = tx.Sign(w.GetNetworkPassPhrase(), w.keypair)
+		if err != nil {
+			if hError, ok := err.(*horizonclient.Error); ok {
+				log.Error().Msgf("Error submitting tx %+v", hError.Problem.Extras)
+			}
+			return nil, errors.Wrap(err, "failed to sign transaction with keypair")
 		}
-		return nil, errors.Wrap(err, "failed to sign transaction with keypair")
 	}
 
 	return tx, nil
@@ -279,7 +301,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 		asset := w.GetAssetCodeAndIssuer()
 
 		for _, effect := range effects.Embedded.Records {
-			if effect.GetAccount() != w.keypair.Address() {
+			if effect.GetAccount() != w.config.StellarBridgeAccount {
 				continue
 			}
 			if effect.GetType() == "account_credited" {
@@ -307,7 +329,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 					// 		if op.GetType() == "payment" {
 					// 			paymentOpation := op.(operations.Payment)
 
-					// 			if paymentOpation.To == w.keypair.Address() {
+					// 			if paymentOpation.To == w.config.StellarBridgeAccount {
 					// 				log.Warn().Msg("Calling refund")
 					// 				err := w.CreateAndSubmitRefund(context.Background(), paymentOpation.From, uint64(parsedAmount), tx.Hash, true)
 					// 				if err != nil {

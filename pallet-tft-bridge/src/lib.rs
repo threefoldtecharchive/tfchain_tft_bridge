@@ -9,7 +9,7 @@ use frame_support::{
 	decl_event, decl_module, decl_storage, decl_error, ensure, debug,
 	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec},
 };
-use frame_system::{self as system, ensure_signed, ensure_root};
+use frame_system::{self as system, ensure_signed, ensure_root, RawOrigin};
 use sp_runtime::{DispatchResult};
 use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
@@ -48,7 +48,7 @@ decl_event!(
 		// Burn events
 		BurnTransactionCreated(u64, AccountId, u64),
 		BurnTransactionProposed(u64, AccountId, u64),
-		BurnTransactionSignatureAdded(u64, Vec<u8>),
+		BurnTransactionSignatureAdded(u64, StellarSignature),
 		BurnTransactionReady(u64),
 		BurnTransactionProcessed(u64),
 	}
@@ -90,7 +90,13 @@ pub struct BurnTransaction <AccountId, BlockNumber> {
 	pub block: BlockNumber,
 	pub amount: u64,
 	pub target: AccountId,
-	pub signatures: Vec<Vec<u8>>
+	pub signatures: Vec<StellarSignature>
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
+pub struct StellarSignature {
+	pub signature: Vec<u8>,
+	pub stellar_pub_key: Vec<u8>
 }
 
 decl_storage! {
@@ -108,6 +114,18 @@ decl_storage! {
 
 		pub BurnTransactionID: u64;
 	}
+
+	add_extra_genesis {
+        config(validator_accounts): Vec<T::AccountId>;
+
+        build(|_config| {
+            let validator_accounts = _config.validator_accounts.clone();
+
+			for validator in validator_accounts {
+				let _ = <Module<T>>::add_validator(RawOrigin::Root.into(), validator);
+			}
+        });
+    }
 }
 
 decl_module! {
@@ -139,9 +157,9 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>){
+		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>){
             let validator = ensure_signed(origin)?;
-            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction_id, target, amount, signature)?;
+            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction_id, target, amount, signature, stellar_pub_key)?;
 		}
 
 		#[weight = 10_000]
@@ -247,14 +265,14 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>) -> DispatchResult {
+	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
 		// check if it already has been executed in the past
 		ensure!(!ExecutedBurnTransactions::<T>::contains_key(tx_id), Error::<T>::BurnTransactionAlreadyExecuted);
 
 		Self::check_if_validator_exists(validator.clone())?;
 		
 		if BurnTransactions::<T>::contains_key(tx_id) {
-			return Self::add_stellar_sig_burn_transaction(tx_id, signature);
+			return Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key);
 		}
 
 		let now = <frame_system::Module<T>>::block_number();
@@ -266,22 +284,29 @@ impl<T: Config> Module<T> {
 		};
 		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
 
-		Self::add_stellar_sig_burn_transaction(tx_id, signature)?;
+		Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key)?;
 
 		Self::deposit_event(RawEvent::BurnTransactionProposed(tx_id, target, amount));
 
 		Ok(())
 	}
 
-	pub fn add_stellar_sig_burn_transaction(tx_id: u64, signature: Vec<u8>) -> DispatchResult {
+	pub fn add_stellar_sig_burn_transaction(tx_id: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
 		let mut tx = BurnTransactions::<T>::get(&tx_id);
+
 		// check if the signature already exists
-		ensure!(!tx.signatures.iter().any(|sig| sig == &signature), Error::<T>::BurnSignatureExists);
+		ensure!(!tx.signatures.iter().any(|sig| sig.stellar_pub_key == stellar_pub_key), Error::<T>::BurnSignatureExists);
+		ensure!(!tx.signatures.iter().any(|sig| sig.signature == signature), Error::<T>::BurnSignatureExists);
 
 		// add the signature
-		tx.signatures.push(signature.clone());
+		let stellar_signature = StellarSignature {
+			signature,
+			stellar_pub_key
+		};
+
+		tx.signatures.push(stellar_signature.clone());
 		BurnTransactions::<T>::insert(tx_id, &tx);
-		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id, signature));
+		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id, stellar_signature));
 		
 		let validators = Validators::<T>::get();
 		// if more then then the half of all validators

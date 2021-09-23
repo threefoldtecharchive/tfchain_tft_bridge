@@ -20,7 +20,7 @@ type BurnTransaction struct {
 	Block      types.U32
 	Amount     types.U64
 	Target     AccountID
-	Signatures [][]byte
+	Signatures []pkg.StellarSignature
 }
 
 func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, blockpersistency *pkg.ChainPersistency) error {
@@ -91,9 +91,9 @@ func unsubscribe(sub *state.StorageSubscription) {
 	sub.Unsubscribe()
 }
 
-func (s *Substrate) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string) error {
+func (s *Substrate) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string, stellarAddress string) error {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.propose_burn_transaction_or_add_sig",
-		txID, target, types.U64(amount.Uint64()), signature,
+		txID, target, types.U64(amount.Uint64()), signature, stellarAddress,
 	)
 
 	if err != nil {

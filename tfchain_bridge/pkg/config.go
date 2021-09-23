@@ -21,4 +21,9 @@ type StellarConfig struct {
 	StellarFeeWallet string
 }
 
+type StellarSignature struct {
+	Signature      []byte
+	StellarAddress []byte
+}
+
 var ErrTransactionAlreadyMinted = errors.New("transaction is already minted")

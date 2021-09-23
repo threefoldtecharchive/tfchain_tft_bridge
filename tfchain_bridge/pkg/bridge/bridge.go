@@ -215,6 +215,8 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 
 func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated) error {
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnCreatedEvent.BurnTransactionID)
+	log.Info().Msgf("TX burned? %+v, %+v", burned, err)
+
 	if err != nil {
 		return err
 	}
@@ -235,7 +237,7 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 	}
 
 	amount := big.NewInt(int64(burnCreatedEvent.Amount))
-	err = bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature)
+	err = bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address())
 	if err != nil {
 		return err
 	}
@@ -245,9 +247,13 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 
 func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) error {
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnReadyEvent.BurnTransactionID)
+	log.Info().Msgf("TX burned? %+v, %+v", burned, err)
+
 	if err != nil {
 		return err
 	}
+
+	log.Info().Msgf("TX burned? %+v, %+v", burned, err)
 
 	if burned {
 		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnReadyEvent.BurnTransactionID)

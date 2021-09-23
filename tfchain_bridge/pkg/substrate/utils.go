@@ -6,6 +6,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/threefoldtech/tfchain_bridge/pkg"
 	"github.com/vedhavyas/go-subkey"
 	subkeyEd25519 "github.com/vedhavyas/go-subkey/ed25519"
 	"golang.org/x/crypto/blake2b"
@@ -51,7 +52,7 @@ type BurnTransactionReady struct {
 type BurnTransactionSignatureAdded struct {
 	Phase             types.Phase
 	BurnTransactionID types.U64
-	Signature         []byte
+	Signature         pkg.StellarSignature
 	Topics            []types.Hash
 }
 
