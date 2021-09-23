@@ -7,7 +7,7 @@ import (
 )
 
 type Blockheight struct {
-	LastHeight    uint64 `json:"lastHeight"`
+	LastHeight    uint32 `json:"lastHeight"`
 	StellarCursor string `json:"stellarCursor"`
 }
 
@@ -21,7 +21,7 @@ func InitPersist(location string) (*ChainPersistency, error) {
 	}, nil
 }
 
-func (b *ChainPersistency) saveHeight(height uint64) error {
+func (b *ChainPersistency) SaveHeight(height uint32) error {
 	blockheight, err := b.GetHeight()
 	if err != nil {
 		return err

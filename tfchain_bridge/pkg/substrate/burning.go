@@ -8,6 +8,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
 
 var (
@@ -22,7 +23,7 @@ type BurnTransaction struct {
 	Signatures [][]byte
 }
 
-func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady) error {
+func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, blockpersistency *pkg.ChainPersistency) error {
 	// Subscribe to system events via storage
 	key, err := types.CreateStorageKey(s.meta, "System", "Events", nil)
 	if err != nil {
@@ -39,6 +40,26 @@ func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, bu
 	for {
 		set := <-sub.Chan()
 		// inner loop for the changes within one of those notifications
+
+		err := s.ProcessBurnEvents(burnChan, burnReadyChan, key, []types.StorageChangeSet{set})
+		if err != nil {
+			log.Err(err).Msg("error while processing burn events")
+		}
+
+		bl, err := s.cl.RPC.Chain.GetBlock(set.Block)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", bl.Block.Header.Number)
+		err = blockpersistency.SaveHeight(uint32(bl.Block.Header.Number))
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (s *Substrate) ProcessBurnEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, key types.StorageKey, changeset []types.StorageChangeSet) error {
+	for _, set := range changeset {
 		for _, chng := range set.Changes {
 			if !types.Eq(chng.StorageKey, key) || !chng.HasStorageData {
 				// skip, we are only interested in events with content
@@ -47,7 +68,7 @@ func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, bu
 
 			// Decode the event records
 			events := EventRecords{}
-			err = types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(s.meta, &events)
+			err := types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(s.meta, &events)
 			if err != nil {
 				log.Err(ErrFailedToDecode)
 			}
@@ -61,6 +82,8 @@ func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, bu
 			}
 		}
 	}
+
+	return nil
 }
 
 func unsubscribe(sub *state.StorageSubscription) {
@@ -145,10 +168,8 @@ func (s *Substrate) IsBurnedAlready(identity *Identity, burnTransactionID types.
 	}
 
 	if !ok {
-		return false, ErrBurnTransactionNotFound
+		return false, nil
 	}
-
-	log.Info().Msgf("burn tx found %+v", burnTx)
 
 	return true, nil
 }

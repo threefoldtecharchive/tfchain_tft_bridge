@@ -95,11 +95,22 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 
 func (bridge *Bridge) Start(ctx context.Context) error {
 	go func() {
-		log.Info().Msg("starting bridge...")
+		log.Info().Msg("starting minting subscription...")
 		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.blockPersistency); err != nil {
 			panic(err)
 		}
 	}()
+
+	currentBlockNumber, err := bridge.subClient.GetCurrentHeight()
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("current blockheight: %d", currentBlockNumber)
+
+	height, err := bridge.blockPersistency.GetHeight()
+	if err != nil {
+		return err
+	}
 
 	// Channel where withdrawal events are stored
 	// Should only be read from by the master bridge
@@ -107,26 +118,16 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	burnReadyChan := make(chan substrate.BurnTransactionReady)
 
 	go func() {
-		log.Info().Msg("started subs...")
-		if err := bridge.subClient.SubscribeBurnEvents(burnChan, burnReadyChan); err != nil {
-			if err != substrate.ErrFailedToDecode {
-				panic(err)
-			}
-		}
-	}()
-
-	go func() {
-
 		for {
 			select {
 			case burn := <-burnChan:
-				log.Info().Msgf("received burn event %+v", burn)
+				log.Info().Int("id", int(burn.BurnTransactionID)).Int64("amount", int64(burn.Amount)).Str("target", burn.Target.String()).Msgf("received burn event")
 				err := bridge.proposeBurnTransactionOrAddSig(ctx, burn)
 				if err != nil {
 					log.Error().Msgf("error occurred while proposing burn tx %+v", err)
 				}
 			case burnReady := <-burnReadyChan:
-				log.Info().Msgf("received burn ready event %+v", burnReady)
+				log.Info().Int("id", int(burnReady.BurnTransactionID)).Msgf("received burn ready event")
 				err := bridge.submitBurnTransaction(ctx, burnReady)
 				if err != nil {
 					log.Error().Msgf("error occurred while submitting burn tx %+v", err)
@@ -134,6 +135,33 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			}
 		}
 	}()
+
+	go func() {
+		log.Info().Msg("started subs...")
+		if err := bridge.subClient.SubscribeBurnEvents(burnChan, burnReadyChan, bridge.blockPersistency); err != nil {
+			if err != substrate.ErrFailedToDecode {
+				panic(err)
+			}
+		}
+	}()
+
+	if height.LastHeight < currentBlockNumber {
+		// TODO replay all events from lastheight until current height
+		log.Info().Msgf("saved height is %d, need to sync from saved height until current height..", height.LastHeight)
+		key, set, err := bridge.subClient.FetchEventsForBlockRange(height.LastHeight, currentBlockNumber)
+		if err != nil {
+			return err
+		}
+
+		err = bridge.subClient.ProcessBurnEvents(burnChan, burnReadyChan, key, set)
+		if err != nil {
+			if err == substrate.ErrFailedToDecode {
+				log.Err(err)
+			} else {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
@@ -186,6 +214,16 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 }
 
 func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated) error {
+	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnCreatedEvent.BurnTransactionID)
+	if err != nil {
+		return err
+	}
+
+	if burned {
+		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnCreatedEvent.BurnTransactionID)
+		return nil
+	}
+
 	stellarAddress, err := getStellarAddressFromSubstrateAccountID(burnCreatedEvent.Target)
 	if err != nil {
 		return err
@@ -206,12 +244,21 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 }
 
 func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) error {
+	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnReadyEvent.BurnTransactionID)
+	if err != nil {
+		return err
+	}
+
+	if burned {
+		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnReadyEvent.BurnTransactionID)
+		return nil
+	}
+
 	burnTx, err := bridge.subClient.GetBurnTransaction(&bridge.identity, burnReadyEvent.BurnTransactionID)
 	if err != nil {
 		return err
 	}
 
-	log.Info().Msgf("burn tx: %+v", burnTx)
 	stellarAddress, err := getStellarAddressFromSubstrateAccountID(substrate.AccountID(burnTx.Target))
 	if err != nil {
 		return err
