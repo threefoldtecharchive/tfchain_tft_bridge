@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrBurnTransactionNotFound = fmt.Errorf("burn tx not found")
-	ErrFailedToDecode          = fmt.Errorf("failed to decode events, skipping")
+	ErrBurnTransactionNotFound   = fmt.Errorf("burn tx not found")
+	ErrRefundTransactionNotFound = fmt.Errorf("refund tx not found")
+	ErrFailedToDecode            = fmt.Errorf("failed to decode events, skipping")
 )
 
 type BurnTransaction struct {
@@ -21,69 +22,6 @@ type BurnTransaction struct {
 	Amount     types.U64
 	Target     AccountID
 	Signatures []pkg.StellarSignature
-}
-
-func (s *Substrate) SubscribeBurnEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, blockpersistency *pkg.ChainPersistency) error {
-	// Subscribe to system events via storage
-	key, err := types.CreateStorageKey(s.meta, "System", "Events", nil)
-	if err != nil {
-		return err
-	}
-
-	sub, err := s.cl.RPC.State.SubscribeStorageRaw([]types.StorageKey{key})
-	if err != nil {
-		return err
-	}
-	defer unsubscribe(sub)
-
-	// outer for loop for subscription notifications
-	for {
-		set := <-sub.Chan()
-		// inner loop for the changes within one of those notifications
-
-		err := s.ProcessBurnEvents(burnChan, burnReadyChan, key, []types.StorageChangeSet{set})
-		if err != nil {
-			log.Err(err).Msg("error while processing burn events")
-		}
-
-		bl, err := s.cl.RPC.Chain.GetBlock(set.Block)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", bl.Block.Header.Number)
-		err = blockpersistency.SaveHeight(uint32(bl.Block.Header.Number))
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (s *Substrate) ProcessBurnEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, key types.StorageKey, changeset []types.StorageChangeSet) error {
-	for _, set := range changeset {
-		for _, chng := range set.Changes {
-			if !types.Eq(chng.StorageKey, key) || !chng.HasStorageData {
-				// skip, we are only interested in events with content
-				continue
-			}
-
-			// Decode the event records
-			events := EventRecords{}
-			err := types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(s.meta, &events)
-			if err != nil {
-				log.Err(ErrFailedToDecode)
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-				burnChan <- e
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-				burnReadyChan <- e
-			}
-		}
-	}
-
-	return nil
 }
 
 func unsubscribe(sub *state.StorageSubscription) {

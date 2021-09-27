@@ -21,7 +21,7 @@ var (
 
 const (
 	// Depositing from Stellar to smart chain fee
-	DepositFee = 0 * 1e7
+	DepositFee = 50 * 1e7
 	// Withdrawing from smartchain to Stellar fee
 	WithdrawFee   = int64(1 * 1e7)
 	BridgeNetwork = "stellar"
@@ -96,7 +96,7 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 func (bridge *Bridge) Start(ctx context.Context) error {
 	go func() {
 		log.Info().Msg("starting minting subscription...")
-		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.blockPersistency); err != nil {
+		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.refund, bridge.blockPersistency); err != nil {
 			panic(err)
 		}
 	}()
@@ -116,6 +116,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	// Should only be read from by the master bridge
 	burnChan := make(chan substrate.BurnTransactionCreated)
 	burnReadyChan := make(chan substrate.BurnTransactionReady)
+	refundReadyChan := make(chan substrate.RefundTransactionReady)
 
 	go func() {
 		for {
@@ -132,13 +133,20 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 				if err != nil {
 					log.Error().Msgf("error occurred while submitting burn tx %+v", err)
 				}
+			case refundReady := <-refundReadyChan:
+				log.Info().Str("txhash", string(refundReady.RefundTransactionHash)).Msgf("received refund ready event")
+				err := bridge.submitRefundTransaction(ctx, refundReady)
+				if err != nil {
+					log.Error().Msgf("error occurred while submitting refund tx %+v", err)
+				}
 			}
+
 		}
 	}()
 
 	go func() {
 		log.Info().Msg("started subs...")
-		if err := bridge.subClient.SubscribeBurnEvents(burnChan, burnReadyChan, bridge.blockPersistency); err != nil {
+		if err := bridge.subClient.SubscribeEvents(burnChan, burnReadyChan, refundReadyChan, bridge.blockPersistency); err != nil {
 			if err != substrate.ErrFailedToDecode {
 				panic(err)
 			}
@@ -153,7 +161,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			return err
 		}
 
-		err = bridge.subClient.ProcessBurnEvents(burnChan, burnReadyChan, key, set)
+		err = bridge.subClient.ProcessEvents(burnChan, burnReadyChan, refundReadyChan, key, set)
 		if err != nil {
 			if err == substrate.ErrFailedToDecode {
 				log.Err(err)
@@ -270,12 +278,65 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return err
 	}
 
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), uint64(burnReadyEvent.BurnTransactionID), false, burnTx.Signatures)
+	// todo add memo hash
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", false, burnTx.Signatures)
 	if err != nil {
 		return err
 	}
 
 	return bridge.subClient.SetBurnTransactionExecuted(&bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
+}
+
+func (bridge *Bridge) refund(ctx context.Context, destination string, amount int64, txHash string) error {
+	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, txHash)
+	log.Info().Msgf("TX refunded? %+v, %+v", refunded, err)
+
+	if err != nil {
+		return err
+	}
+
+	if refunded {
+		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
+		return nil
+	}
+
+	signature, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash, false)
+	if err != nil {
+		return err
+	}
+
+	err = bridge.subClient.CreateRefundTransactionOrAddSig(&bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) error {
+	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+	log.Info().Msgf("TX refunded? %+v, %+v", refunded, err)
+
+	if err != nil {
+		return err
+	}
+
+	if refunded {
+		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", string(refundReadyEvent.RefundTransactionHash))
+		return nil
+	}
+
+	refund, err := bridge.subClient.GetRefundTransaction(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+	if err != nil {
+		return err
+	}
+
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, false, refund.Signatures)
+	if err != nil {
+		return err
+	}
+
+	return bridge.subClient.SetRefundTransactionExecuted(&bridge.identity, refund.TxHash)
 }
 
 func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {

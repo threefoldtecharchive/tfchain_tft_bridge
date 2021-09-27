@@ -3,11 +3,13 @@ package stellar
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/stellar/go/amount"
 	"github.com/stellar/go/clients/horizonclient"
@@ -16,7 +18,6 @@ import (
 	hProtocol "github.com/stellar/go/protocols/horizon"
 	horizoneffects "github.com/stellar/go/protocols/horizon/effects"
 	"github.com/stellar/go/protocols/horizon/operations"
-	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/txnbuild"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
@@ -31,7 +32,7 @@ const (
 	depositFee             = 50 * 1e7
 )
 
-// var errInsufficientDepositAmount = errors.New("deposited amount is <= Fee")
+var errInsufficientDepositAmount = errors.New("deposited amount is <= Fee")
 
 // stellarWallet is the bridge wallet
 // Payments will be funded and fees will be taken with this wallet
@@ -84,13 +85,48 @@ func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, tar
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
 }
 
-func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txID uint64, includeWithdrawFee bool, signatures []pkg.StellarSignature) error {
+func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, includeWithdrawFee bool, signatures []pkg.StellarSignature) error {
 	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
 	if err != nil {
 		return err
 	}
 
-	// txnBuild.Memo = txnbuild.MemoHash()
+	txn, err := w.createTransaction(ctx, txnBuild, false)
+	if err != nil {
+		return err
+	}
+
+	if len(signatures) < w.signatureCount {
+		return errors.New("not enough signatures, aborting")
+	}
+
+	requiredSignatures := signatures[:w.signatureCount]
+	for _, sig := range requiredSignatures {
+		log.Info().Msgf("ADDING SIGNATURE %s, ACCOUNT %s", string(sig.Signature), string(sig.StellarAddress))
+		txn, err = txn.AddSignatureBase64(w.GetNetworkPassPhrase(), string(sig.StellarAddress), string(sig.Signature))
+		if err != nil {
+			return err
+		}
+	}
+
+	return w.submitTransaction(ctx, txn)
+}
+
+func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, includeWithdrawFee bool, signatures []pkg.StellarSignature) error {
+	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
+	if err != nil {
+		return err
+	}
+
+	parsedMessage, err := hex.DecodeString(txHash)
+	if err != nil {
+		return err
+	}
+
+	var memo [32]byte
+	copy(memo[:], parsedMessage)
+
+	txnBuild.Memo = txnbuild.MemoReturn(memo)
 
 	txn, err := w.createTransaction(ctx, txnBuild, false)
 	if err != nil {
@@ -117,35 +153,31 @@ func (w *StellarWallet) GetKeypair() *keypair.Full {
 	return w.keypair
 }
 
-// func (w *StellarWallet) CreateAndSubmitPayment(ctx context.Context, target string, amount uint64, receiver common.Address, blockheight uint64, txHash common.Hash, message string, includeWithdrawFee bool) error {
-// 	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
-// 	if err != nil {
-// 		return err
-// 	}
+func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, target string, amount uint64, message string, includeWithdrawFee bool) (string, error) {
+	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
+	if err != nil {
+		return "", err
+	}
 
-// 	txnBuild.Memo = txnbuild.MemoHash(txHash)
+	parsedMessage, err := hex.DecodeString(message)
+	if err != nil {
+		return "", err
+	}
 
-// 	return w.submitTransaction(ctx, txnBuild)
-// }
+	var memo [32]byte
+	copy(memo[:], parsedMessage)
 
-// func (w *StellarWallet) CreateAndSubmitRefund(ctx context.Context, target string, amount uint64, message string, includeWithdrawFee bool) error {
-// 	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
-// 	if err != nil {
-// 		return err
-// 	}
+	txnBuild.Memo = txnbuild.MemoReturn(memo)
 
-// 	parsedMessage, err := hex.DecodeString(message)
-// 	if err != nil {
-// 		return err
-// 	}
+	txn, err := w.createTransaction(ctx, txnBuild, true)
+	if err != nil {
+		return "", err
+	}
 
-// 	var memo [32]byte
-// 	copy(memo[:], parsedMessage)
+	signatures := txn.Signatures()
 
-// 	txnBuild.Memo = txnbuild.MemoReturn(memo)
-
-// 	return w.submitTransaction(ctx, txnBuild)
-// }
+	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
+}
 
 // // CreateAndSubmitFeepayment creates and submites a payment to the fee wallet
 // // only an amount and hash needs to be specified
@@ -270,10 +302,13 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 // mint handler
 type mint func(string, *big.Int, string) error
 
+// refund handler
+type refund func(context.Context, string, int64, string) error
+
 //MonitorBridgeAccountAndMint is a blocking function that keeps monitoring
 // the bridge account on the Stellar network for new transactions and calls the
 // mint function when a deposit is made
-func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, persistency *pkg.ChainPersistency) error {
+func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, refundFn refund, persistency *pkg.ChainPersistency) error {
 	transactionHandler := func(tx hProtocol.Transaction) {
 		if !tx.Successful {
 			return
@@ -319,27 +354,28 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 				err = mintFn(tx.Account, depositedAmount, tx.Hash)
 				for err != nil {
 					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
-					// if err == errInsufficientDepositAmount {
-					// 	log.Warn().Msgf("User is trying to swap less than the fee amount, refunding now", "amount", parsedAmount)
-					// 	ops, err := w.getOperationEffect(tx.Hash)
-					// 	if err != nil {
-					// 		continue
-					// 	}
-					// 	for _, op := range ops.Embedded.Records {
-					// 		if op.GetType() == "payment" {
-					// 			paymentOpation := op.(operations.Payment)
 
-					// 			if paymentOpation.To == w.config.StellarBridgeAccount {
-					// 				log.Warn().Msg("Calling refund")
-					// 				err := w.CreateAndSubmitRefund(context.Background(), paymentOpation.From, uint64(parsedAmount), tx.Hash, true)
-					// 				if err != nil {
-					// 					log.Error().Msgf("error while trying to refund user", "err", err.Error())
-					// 				}
-					// 			}
-					// 		}
-					// 	}
-					// 	return
-					// }
+					if err.Error() == errInsufficientDepositAmount.Error() {
+						log.Warn().Msgf("User is trying to swap less than the fee amount, refunding now", "amount", parsedAmount)
+						ops, err := w.getOperationEffect(tx.Hash)
+						if err != nil {
+							continue
+						}
+						for _, op := range ops.Embedded.Records {
+							if op.GetType() == "payment" {
+								paymentOpation := op.(operations.Payment)
+
+								if paymentOpation.To == w.config.StellarBridgeAccount {
+									log.Warn().Msg("Calling refund")
+									err := refundFn(ctx, paymentOpation.From, parsedAmount, tx.Hash)
+									if err != nil {
+										log.Error().Msgf("error while trying to refund user", "err", err.Error())
+									}
+								}
+							}
+						}
+						return
+					}
 
 					// if err == pkg.ErrTransactionAlreadyMinted {
 					// 	break
