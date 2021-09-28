@@ -237,12 +237,16 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 		return err
 	}
 
-	signature, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, uint64(burnCreatedEvent.Amount), uint64(burnCreatedEvent.BurnTransactionID), false)
+	amount := big.NewInt(int64(burnCreatedEvent.Amount))
+	// divide the amount of tokens to be burned / the multiplier
+	amount = amount.Div(amount, big.NewInt(bridge.config.TokenMultiplier))
+	log.Info().Msgf("amount after division %+v", amount)
+
+	signature, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID), false)
 	if err != nil {
 		return err
 	}
 
-	amount := big.NewInt(int64(burnCreatedEvent.Amount))
 	err = bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address())
 	if err != nil {
 		return err
