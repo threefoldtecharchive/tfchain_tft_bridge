@@ -100,7 +100,7 @@ func (s *SubstrateClient) SubscribeEvents(burnChan chan BurnTransactionCreated, 
 		if err != nil {
 			return err
 		}
-		log.Info().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", bl.Block.Header.Number)
+		log.Debug().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", bl.Block.Header.Number)
 		err = blockpersistency.SaveHeight(uint32(bl.Block.Header.Number))
 		if err != nil {
 			return err

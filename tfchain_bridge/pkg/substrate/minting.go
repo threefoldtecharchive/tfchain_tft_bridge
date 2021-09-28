@@ -21,7 +21,7 @@ type MintTransaction struct {
 }
 
 func (s *SubstrateClient) IsMintedAlready(identity *Identity, mintTxID string) (exists bool, err error) {
-	log.Info().Msgf("trying to retrieve tx with hash: %s", mintTxID)
+	log.Debug().Msgf("trying to retrieve tx with hash: %s", mintTxID)
 	bytes, err := types.EncodeToBytes(mintTxID)
 	if err != nil {
 		return false, errors.Wrap(err, "substrate: encoding error building query arguments")

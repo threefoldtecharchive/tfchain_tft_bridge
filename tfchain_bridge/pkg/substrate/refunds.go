@@ -32,7 +32,7 @@ func (s *SubstrateClient) CreateRefundTransactionOrAddSig(identity *Identity, tx
 }
 
 func (s *SubstrateClient) SetRefundTransactionExecuted(identity *Identity, txHash string) error {
-	log.Info().Msg("setting refund transaction as executed")
+	log.Debug().Msg("setting refund transaction as executed")
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_refund_transaction_executed", txHash)
 
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *SubstrateClient) SetRefundTransactionExecuted(identity *Identity, txHas
 }
 
 func (s *SubstrateClient) IsRefundedAlready(identity *Identity, txHash string) (exists bool, err error) {
-	log.Info().Msgf("trying to retrieve executed refund transaction with id: %s", txHash)
+	log.Debug().Msgf("trying to retrieve executed refund transaction with id: %s", txHash)
 	bytes, err := types.EncodeToBytes(txHash)
 	if err != nil {
 		return false, errors.Wrap(err, "substrate: encoding error building query arguments")
@@ -73,7 +73,7 @@ func (s *SubstrateClient) IsRefundedAlready(identity *Identity, txHash string) (
 }
 
 func (s *SubstrateClient) GetRefundTransaction(identity *Identity, txHash string) (*RefundTransaction, error) {
-	log.Info().Msgf("trying to retrieve refund transaction with tx_hash: %s", txHash)
+	log.Debug().Msgf("trying to retrieve refund transaction with tx_hash: %s", txHash)
 	bytes, err := types.EncodeToBytes(txHash)
 	if err != nil {
 		return nil, errors.Wrap(err, "substrate: encoding error building query arguments")

@@ -25,7 +25,7 @@ type BurnTransaction struct {
 }
 
 func unsubscribe(sub *state.StorageSubscription) {
-	log.Info().Msg("unsubscribing from tfchain")
+	log.Debug().Msg("unsubscribing from tfchain")
 	sub.Unsubscribe()
 }
 
@@ -46,7 +46,7 @@ func (s *SubstrateClient) ProposeBurnTransactionOrAddSig(identity *Identity, txI
 }
 
 func (s *SubstrateClient) SetBurnTransactionExecuted(identity *Identity, txID uint64) error {
-	log.Info().Msg("setting burn transaction as executed")
+	log.Debug().Msg("setting burn transaction as executed")
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_burn_transaction_executed", txID)
 
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *SubstrateClient) SetBurnTransactionExecuted(identity *Identity, txID ui
 }
 
 func (s *SubstrateClient) GetBurnTransaction(identity *Identity, burnTransactionID types.U64) (*BurnTransaction, error) {
-	log.Info().Msgf("trying to retrieve burn transaction with id: %s", burnTransactionID)
+	log.Debug().Msgf("trying to retrieve burn transaction with id: %s", burnTransactionID)
 	bytes, err := types.EncodeToBytes(burnTransactionID)
 	if err != nil {
 		return nil, errors.Wrap(err, "substrate: encoding error building query arguments")
@@ -87,7 +87,7 @@ func (s *SubstrateClient) GetBurnTransaction(identity *Identity, burnTransaction
 }
 
 func (s *SubstrateClient) IsBurnedAlready(identity *Identity, burnTransactionID types.U64) (exists bool, err error) {
-	log.Info().Msgf("trying to retrieve executed burn transaction with id: %s", burnTransactionID)
+	log.Debug().Msgf("trying to retrieve executed burn transaction with id: %s", burnTransactionID)
 	bytes, err := types.EncodeToBytes(burnTransactionID)
 	if err != nil {
 		return false, errors.Wrap(err, "substrate: encoding error building query arguments")

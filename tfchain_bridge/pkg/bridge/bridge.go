@@ -200,13 +200,12 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("substrate address bytes %+v", substrateAddressBytes)
 
 	substrateAddress, err := substrate.FromEd25519Bytes(substrateAddressBytes)
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("substrate address %s", substrateAddress)
+	log.Info().Int64("amount", amount.Int64()).Str("tx_id", txID).Msgf("target substrate address to mint on: %s", substrateAddress)
 
 	accountID, err := substrate.FromAddress(substrateAddress)
 	if err != nil {
@@ -223,7 +222,6 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 
 func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated) error {
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnCreatedEvent.BurnTransactionID)
-	log.Info().Msgf("TX burned? %+v, %+v", burned, err)
 
 	if err != nil {
 		return err
@@ -255,13 +253,10 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 
 func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) error {
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnReadyEvent.BurnTransactionID)
-	log.Info().Msgf("TX burned? %+v, %+v", burned, err)
 
 	if err != nil {
 		return err
 	}
-
-	log.Info().Msgf("TX burned? %+v, %+v", burned, err)
 
 	if burned {
 		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnReadyEvent.BurnTransactionID)
@@ -289,7 +284,6 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 
 func (bridge *Bridge) refund(ctx context.Context, destination string, amount int64, txHash string) error {
 	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, txHash)
-	log.Info().Msgf("TX refunded? %+v, %+v", refunded, err)
 
 	if err != nil {
 		return err
@@ -315,7 +309,6 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 
 func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) error {
 	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
-	log.Info().Msgf("TX refunded? %+v, %+v", refunded, err)
 
 	if err != nil {
 		return err
