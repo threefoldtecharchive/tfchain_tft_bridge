@@ -29,7 +29,7 @@ func unsubscribe(sub *state.StorageSubscription) {
 	sub.Unsubscribe()
 }
 
-func (s *Substrate) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string, stellarAddress string) error {
+func (s *SubstrateClient) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string, stellarAddress string) error {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.propose_burn_transaction_or_add_sig",
 		txID, target, types.U64(amount.Uint64()), signature, stellarAddress,
 	)
@@ -45,7 +45,7 @@ func (s *Substrate) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint
 	return nil
 }
 
-func (s *Substrate) SetBurnTransactionExecuted(identity *Identity, txID uint64) error {
+func (s *SubstrateClient) SetBurnTransactionExecuted(identity *Identity, txID uint64) error {
 	log.Info().Msg("setting burn transaction as executed")
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_burn_transaction_executed", txID)
 
@@ -60,7 +60,7 @@ func (s *Substrate) SetBurnTransactionExecuted(identity *Identity, txID uint64) 
 	return nil
 }
 
-func (s *Substrate) GetBurnTransaction(identity *Identity, burnTransactionID types.U64) (*BurnTransaction, error) {
+func (s *SubstrateClient) GetBurnTransaction(identity *Identity, burnTransactionID types.U64) (*BurnTransaction, error) {
 	log.Info().Msgf("trying to retrieve burn transaction with id: %s", burnTransactionID)
 	bytes, err := types.EncodeToBytes(burnTransactionID)
 	if err != nil {
@@ -86,7 +86,7 @@ func (s *Substrate) GetBurnTransaction(identity *Identity, burnTransactionID typ
 	return &burnTx, nil
 }
 
-func (s *Substrate) IsBurnedAlready(identity *Identity, burnTransactionID types.U64) (exists bool, err error) {
+func (s *SubstrateClient) IsBurnedAlready(identity *Identity, burnTransactionID types.U64) (exists bool, err error) {
 	log.Info().Msgf("trying to retrieve executed burn transaction with id: %s", burnTransactionID)
 	bytes, err := types.EncodeToBytes(burnTransactionID)
 	if err != nil {

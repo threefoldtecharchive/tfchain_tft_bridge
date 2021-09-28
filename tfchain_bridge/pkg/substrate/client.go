@@ -23,13 +23,13 @@ type Versioned struct {
 }
 
 // Substrate client
-type Substrate struct {
+type SubstrateClient struct {
 	cl   *gsrpc.SubstrateAPI
 	meta *types.Metadata
 }
 
 // NewSubstrate creates a substrate client
-func NewSubstrate(url string) (*Substrate, error) {
+func NewSubstrateClient(url string) (*SubstrateClient, error) {
 	cl, err := gsrpc.NewSubstrateAPI(url)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func NewSubstrate(url string) (*Substrate, error) {
 		return nil, err
 	}
 
-	return &Substrate{
+	return &SubstrateClient{
 		cl:   cl,
 		meta: meta,
 	}, nil
@@ -47,7 +47,7 @@ func NewSubstrate(url string) (*Substrate, error) {
 
 // Refresh reloads meta from chain!
 // not thread safe
-func (s *Substrate) Refresh() error {
+func (s *SubstrateClient) Refresh() error {
 	meta, err := s.cl.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func (s *Substrate) Refresh() error {
 	return nil
 }
 
-func (s *Substrate) getVersion(b types.StorageDataRaw) (uint32, error) {
+func (s *SubstrateClient) getVersion(b types.StorageDataRaw) (uint32, error) {
 	var ver Versioned
 	if err := types.DecodeFromBytes(b, &ver); err != nil {
 		return 0, errors.Wrapf(ErrInvalidVersion, "failed to load version (reason: %s)", err)

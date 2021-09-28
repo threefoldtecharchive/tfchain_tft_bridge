@@ -31,7 +31,7 @@ const (
 // stellar transactions, and handles them
 type Bridge struct {
 	wallet           *stellar.StellarWallet
-	subClient        *substrate.Substrate
+	subClient        *substrate.SubstrateClient
 	identity         substrate.Identity
 	blockPersistency *pkg.ChainPersistency
 	mut              sync.Mutex
@@ -40,7 +40,7 @@ type Bridge struct {
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
-	subClient, err := substrate.NewSubstrate(cfg.TfchainURL)
+	subClient, err := substrate.NewSubstrateClient(cfg.TfchainURL)
 	if err != nil {
 		return nil, err
 	}

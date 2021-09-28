@@ -124,7 +124,7 @@ func IdentityFromPhrase(seedOrPhrase string) (Identity, error) {
 	return Identity(krp), nil
 }
 
-func (s *Substrate) getAccount(identity *Identity, meta *types.Metadata) (info types.AccountInfo, err error) {
+func (s *SubstrateClient) getAccount(identity *Identity, meta *types.Metadata) (info types.AccountInfo, err error) {
 	key, err := types.CreateStorageKey(meta, "System", "Account", identity.PublicKey, nil)
 	if err != nil {
 		err = errors.Wrap(err, "failed to create storage key")
@@ -144,7 +144,7 @@ func (s *Substrate) getAccount(identity *Identity, meta *types.Metadata) (info t
 }
 
 // GetAccount gets account info with secure key
-func (s *Substrate) GetAccount(identity *Identity) (info types.AccountInfo, err error) {
+func (s *SubstrateClient) GetAccount(identity *Identity) (info types.AccountInfo, err error) {
 	meta, err := s.cl.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return info, err

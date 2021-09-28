@@ -20,7 +20,7 @@ type MintTransaction struct {
 	Votes  types.U32
 }
 
-func (s *Substrate) IsMintedAlready(identity *Identity, mintTxID string) (exists bool, err error) {
+func (s *SubstrateClient) IsMintedAlready(identity *Identity, mintTxID string) (exists bool, err error) {
 	log.Info().Msgf("trying to retrieve tx with hash: %s", mintTxID)
 	bytes, err := types.EncodeToBytes(mintTxID)
 	if err != nil {
@@ -48,7 +48,7 @@ func (s *Substrate) IsMintedAlready(identity *Identity, mintTxID string) (exists
 	return true, nil
 }
 
-func (s *Substrate) ProposeOrVoteMintTransaction(identity *Identity, txID string, target AccountID, amount *big.Int) error {
+func (s *SubstrateClient) ProposeOrVoteMintTransaction(identity *Identity, txID string, target AccountID, amount *big.Int) error {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.propose_or_vote_mint_transaction",
 		txID, target, types.U64(amount.Uint64()),
 	)

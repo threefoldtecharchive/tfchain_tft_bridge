@@ -5,7 +5,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Substrate) GetCurrentHeight() (uint32, error) {
+func (s *SubstrateClient) GetCurrentHeight() (uint32, error) {
 	var blockNumber uint32
 	key, err := types.CreateStorageKey(s.meta, "System", "Number", nil)
 	if err != nil {
@@ -25,7 +25,7 @@ func (s *Substrate) GetCurrentHeight() (uint32, error) {
 	return blockNumber, nil
 }
 
-func (s *Substrate) FetchEventsForBlockRange(start uint32, end uint32) (types.StorageKey, []types.StorageChangeSet, error) {
+func (s *SubstrateClient) FetchEventsForBlockRange(start uint32, end uint32) (types.StorageKey, []types.StorageChangeSet, error) {
 	key, err := types.CreateStorageKey(s.meta, "System", "Events", nil)
 	if err != nil {
 		return key, nil, err

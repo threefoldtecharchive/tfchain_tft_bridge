@@ -15,7 +15,7 @@ type RefundTransaction struct {
 	Signatures []pkg.StellarSignature
 }
 
-func (s *Substrate) CreateRefundTransactionOrAddSig(identity *Identity, tx_hash string, target string, amount int64, signature string, stellarAddress string) error {
+func (s *SubstrateClient) CreateRefundTransactionOrAddSig(identity *Identity, tx_hash string, target string, amount int64, signature string, stellarAddress string) error {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.create_refund_transaction_or_add_sig",
 		tx_hash, target, types.U64(amount), signature, stellarAddress,
 	)
@@ -31,7 +31,7 @@ func (s *Substrate) CreateRefundTransactionOrAddSig(identity *Identity, tx_hash 
 	return nil
 }
 
-func (s *Substrate) SetRefundTransactionExecuted(identity *Identity, txHash string) error {
+func (s *SubstrateClient) SetRefundTransactionExecuted(identity *Identity, txHash string) error {
 	log.Info().Msg("setting refund transaction as executed")
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_refund_transaction_executed", txHash)
 
@@ -46,7 +46,7 @@ func (s *Substrate) SetRefundTransactionExecuted(identity *Identity, txHash stri
 	return nil
 }
 
-func (s *Substrate) IsRefundedAlready(identity *Identity, txHash string) (exists bool, err error) {
+func (s *SubstrateClient) IsRefundedAlready(identity *Identity, txHash string) (exists bool, err error) {
 	log.Info().Msgf("trying to retrieve executed refund transaction with id: %s", txHash)
 	bytes, err := types.EncodeToBytes(txHash)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *Substrate) IsRefundedAlready(identity *Identity, txHash string) (exists
 	return true, nil
 }
 
-func (s *Substrate) GetRefundTransaction(identity *Identity, txHash string) (*RefundTransaction, error) {
+func (s *SubstrateClient) GetRefundTransaction(identity *Identity, txHash string) (*RefundTransaction, error) {
 	log.Info().Msgf("trying to retrieve refund transaction with tx_hash: %s", txHash)
 	bytes, err := types.EncodeToBytes(txHash)
 	if err != nil {

@@ -11,7 +11,7 @@ var (
 	errValidatorNotFound = fmt.Errorf("validator not found")
 )
 
-func (s *Substrate) IsValidator(identity *Identity) (exists bool, err error) {
+func (s *SubstrateClient) IsValidator(identity *Identity) (exists bool, err error) {
 	var validators []AccountID
 	key, err := types.CreateStorageKey(s.meta, "TFTBridgeModule", "Validators")
 	if err != nil {

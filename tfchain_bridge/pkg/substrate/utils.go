@@ -97,7 +97,7 @@ type EventRecords struct {
 	TFTBridgeModule_RefundTransactionReady          []RefundTransactionReady          //nolint:stylecheck,golint
 }
 
-func (s *Substrate) SubscribeEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, refundReadyChan chan RefundTransactionReady, blockpersistency *pkg.ChainPersistency) error {
+func (s *SubstrateClient) SubscribeEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, refundReadyChan chan RefundTransactionReady, blockpersistency *pkg.ChainPersistency) error {
 	// Subscribe to system events via storage
 	key, err := types.CreateStorageKey(s.meta, "System", "Events", nil)
 	if err != nil {
@@ -132,7 +132,7 @@ func (s *Substrate) SubscribeEvents(burnChan chan BurnTransactionCreated, burnRe
 	}
 }
 
-func (s *Substrate) ProcessEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, refundReadyChan chan RefundTransactionReady, key types.StorageKey, changeset []types.StorageChangeSet) error {
+func (s *SubstrateClient) ProcessEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, refundReadyChan chan RefundTransactionReady, key types.StorageKey, changeset []types.StorageChangeSet) error {
 	for _, set := range changeset {
 		for _, chng := range set.Changes {
 			if !types.Eq(chng.StorageKey, key) || !chng.HasStorageData {
@@ -189,7 +189,7 @@ func signBytes(data []byte, privateKeyURI string) ([]byte, error) {
 }
 
 // Sign adds a signature to the extrinsic
-func (s *Substrate) sign(e *types.Extrinsic, signer *Identity, o types.SignatureOptions) error {
+func (s *SubstrateClient) sign(e *types.Extrinsic, signer *Identity, o types.SignatureOptions) error {
 	if e.Type() != types.ExtrinsicVersion4 {
 		return fmt.Errorf("unsupported extrinsic version: %v (isSigned: %v, type: %v)", e.Version, e.IsSigned(), e.Type())
 	}
@@ -246,7 +246,7 @@ func (s *Substrate) sign(e *types.Extrinsic, signer *Identity, o types.Signature
 	return nil
 }
 
-func (s *Substrate) call(identity *Identity, call types.Call) (hash types.Hash, err error) {
+func (s *SubstrateClient) call(identity *Identity, call types.Call) (hash types.Hash, err error) {
 	// Create the extrinsic
 	ext := types.NewExtrinsic(call)
 
@@ -301,7 +301,7 @@ func (s *Substrate) call(identity *Identity, call types.Call) (hash types.Hash, 
 	return hash, nil
 }
 
-func (s *Substrate) checkForError(blockHash types.Hash, signer types.AccountID) error {
+func (s *SubstrateClient) checkForError(blockHash types.Hash, signer types.AccountID) error {
 	meta, err := s.cl.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return err
