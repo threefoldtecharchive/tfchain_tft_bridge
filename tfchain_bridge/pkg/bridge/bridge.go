@@ -331,7 +331,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 		return err
 	}
 
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, false, refund.Signatures)
+	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, false, refund.Signatures)
 	if err != nil {
 		return err
 	}
