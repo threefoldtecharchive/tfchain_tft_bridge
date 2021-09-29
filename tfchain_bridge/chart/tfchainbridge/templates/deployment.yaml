@@ -42,19 +42,15 @@ spec:
           - name: STELLAR_NETWORK
             value: {{ .Values.network }}
           - name: MULTIPLIER
-            value: {{ .Values.multiplier }}
+            value: {{ .Values.multiplier | quote }}
           args: [
             "--secret", "$(STELLAR_SECRET)",
-            "--tfchainurl", "${WS_URL}",
-            "--tfchainseed", "${TFCHAIN_MNEMONIC}",
-            "--bridgewallet": "${BRIDGE_WALLET_ADDRESS}",
-            "--network","$(STELLAR_NETWORK)",
-            "--multiplier","$(MULTIPLIER)",
+            "--tfchainurl", "$(WS_URL)",
+            "--tfchainseed", "$(TFCHAIN_MNEMONIC)",
+            "--bridgewallet", "$(BRIDGE_WALLET_ADDRESS)",
+            "--network", "$(STELLAR_NETWORK)",
+            "--multiplier", "$(MULTIPLIER)",
           ]
-          ports:
-            - name: http
-              containerPort: 80
-              protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

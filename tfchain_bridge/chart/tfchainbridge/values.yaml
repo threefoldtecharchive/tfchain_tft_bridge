@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: nginx
+  repository: dylanverstraete/tfchainbridge
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -36,19 +36,20 @@ securityContext: {}
   # runAsNonRoot: true
   # runAsUser: 1000
 
-stellar_secret:
+stellar_secret: ""
 
-#ws_url: wss://tfchain.test.threefold.io
+# ws_url: wss://tfchain.dev.threefold.io
 ws_url: 
 
-tfchain_mnemonic:
-bridge_wallet_address: 
+tfchain_mnemonic: ""
+bridge_wallet_address: ""
 
-#network: TEST
+#network: production
+#network: "testnet"
 network:
 
 #multiplier: 2
-multiplier:
+multiplier: 2
 
 ingress:
   enabled: false
