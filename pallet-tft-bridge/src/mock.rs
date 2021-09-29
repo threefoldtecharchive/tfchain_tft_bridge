@@ -123,6 +123,13 @@ pub fn ferdie() -> AccountId {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-	let t = frame_system::GenesisConfig::default().build_storage::<TestRuntime>().unwrap();
+	let mut t = frame_system::GenesisConfig::default().build_storage::<TestRuntime>().unwrap();
+	let genesis = pallet_balances::GenesisConfig::<TestRuntime> {
+		balances: vec![
+			(alice(), 1000000000000),
+            (bob(), 2500000000),
+		],
+	};
+	genesis.assimilate_storage(&mut t).unwrap();
 	t.into()
 }

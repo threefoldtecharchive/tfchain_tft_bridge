@@ -76,6 +76,9 @@ decl_error! {
 		BurnTransactionAlreadyExecuted,
 		RefundTransactionNotExists,
 		RefundTransactionAlreadyExecuted,
+		NotEnoughBalanceToSwap,
+		AmountIsLessThanBurnFee,
+		AmountIsLessThanDepositFee,
 	}
 }
 
@@ -119,6 +122,7 @@ pub struct StellarSignature {
 decl_storage! {
 	trait Store for Module<T: Config> as TFTBridgeModule {
 		pub Validators get(fn validator_accounts): Vec<T::AccountId>;
+		pub FeeAccount get(fn fee_account): T::AccountId;
 
 		// MintTransaction storage maps will contain all the transaction for a Stellar -> TF Chain swap
 		pub MintTransactions get(fn mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
@@ -135,17 +139,28 @@ decl_storage! {
 		pub ExecutedRefundTransactions get(fn executed_refund_transactions): map hasher(blake2_128_concat) Vec<u8> => RefundTransaction<T::BlockNumber>;
 
 		pub BurnTransactionID: u64;
+		pub BurnFee: u64;
+		pub DepositFee: u64;
 	}
 
 	add_extra_genesis {
         config(validator_accounts): Vec<T::AccountId>;
+		config(fee_account): T::AccountId;
+		config(burn_fee): u64;
+		config(deposit_fee): u64;
 
         build(|_config| {
-            let validator_accounts = _config.validator_accounts.clone();
+			let fee_account = _config.fee_account.clone();
+			let _ = <Module<T>>::set_fee_account(RawOrigin::Root.into(), fee_account);
+
+			let validator_accounts = _config.validator_accounts.clone();
 
 			for validator in validator_accounts {
-				let _ = <Module<T>>::add_validator(RawOrigin::Root.into(), validator);
+				let _ = <Module<T>>::add_bridge_validator(RawOrigin::Root.into(), validator);
 			}
+
+			BurnFee::set(_config.burn_fee);
+			DepositFee::set(_config.deposit_fee);
         });
     }
 }
@@ -155,21 +170,39 @@ decl_module! {
 		fn deposit_event() = default;
 		
 		#[weight = 10_000]
-		fn add_validator(origin, target: T::AccountId){
+		fn add_bridge_validator(origin, target: T::AccountId){
             ensure_root(origin)?;
             Self::add_validator_account(target)?;
 		}
 		
 		#[weight = 10_000]
-		fn remove_validator(origin, target: T::AccountId){
+		fn remove_bridge_validator(origin, target: T::AccountId){
             ensure_root(origin)?;
             Self::remove_validator_account(target)?;
 		}
 
 		#[weight = 10_000]
+		fn set_fee_account(origin, target: T::AccountId) {
+			ensure_root(origin)?;
+			FeeAccount::<T>::set(target);
+		}
+
+		#[weight = 10_000]
+		fn set_burn_fee(origin, amount: u64) {
+			ensure_root(origin)?;
+			BurnFee::set(amount);
+		}
+
+		#[weight = 10_000]
+		fn set_deposit_fee(origin, amount: u64) {
+			ensure_root(origin)?;
+			DepositFee::set(amount);
+		}
+
+		#[weight = 10_000]
 		fn swap_to_stellar(origin, target: T::AccountId, amount: BalanceOf<T>){
             ensure_signed(origin)?;
-            Self::burn_tft(target, amount);
+            Self::burn_tft(target, amount)?;
 		}
 		
 		#[weight = 10_000]
@@ -222,11 +255,21 @@ decl_module! {
 }
 
 impl<T: Config> Module<T> {
-	pub fn mint_tft(tx_id: Vec<u8>, tx: MintTransaction<T::AccountId, T::BlockNumber>) { 
-		let amount_as_balance = BalanceOf::<T>::saturated_from(tx.amount);
-       
+	pub fn mint_tft(tx_id: Vec<u8>, tx: MintTransaction<T::AccountId, T::BlockNumber>) -> DispatchResult {
+		let deposit_fee = DepositFee::get();
+		ensure!(tx.amount > deposit_fee, Error::<T>::AmountIsLessThanDepositFee);
+
+		// caculate amount - deposit fee
+		let new_amount = tx.amount - deposit_fee;
+
+		// transfer new amount to target
+		let amount_as_balance = BalanceOf::<T>::saturated_from(new_amount);
         T::Currency::deposit_creating(&tx.target, amount_as_balance);
-	
+		
+		// transfer deposit fee to fee wallet
+		let deposit_fee_b = BalanceOf::<T>::saturated_from(deposit_fee);
+		T::Currency::deposit_creating(&FeeAccount::<T>::get(), deposit_fee_b);
+		
 		// Remove tx from storage
 		MintTransactions::<T>::remove(tx_id.clone());
 		// Insert into executed transactions
@@ -234,18 +277,41 @@ impl<T: Config> Module<T> {
 
         let now = <system::Module<T>>::block_number();
         Self::deposit_event(RawEvent::MintCompleted(tx.target, tx.amount, now));
+
+		Ok(())
     }
 
-    pub fn burn_tft(target: T::AccountId, amount: BalanceOf<T>) {
-        let imbalance = T::Currency::slash(&target, amount).0;
+    pub fn burn_tft(target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+		let burn_fee = BurnFee::get();
+		let burn_fee_b = BalanceOf::<T>::saturated_from(burn_fee);
+		let free_balance: BalanceOf<T> = T::Currency::free_balance(&target);
+
+		// Make sure the user has enough balance to cover the withdraw
+		ensure!(free_balance >= amount, Error::<T>::NotEnoughBalanceToSwap);
+
+		// Make sure the user wants to swap more than the burn fee
+		ensure!(amount > burn_fee_b, Error::<T>::AmountIsLessThanBurnFee);
+		
+		// calculate amount - burn fee
+		let new_amount = amount - burn_fee_b;
+		let amount_as_u64: u64 = new_amount.saturated_into::<u64>();
+
+		// transfer amount - fee to target account
+        let imbalance = T::Currency::slash(&target, new_amount).0;
         T::Burn::on_unbalanced(imbalance);
 
+		// transfer burn fee to fee wallet
+		let burn_fee_b = BalanceOf::<T>::saturated_from(burn_fee);
+		T::Currency::deposit_creating(&FeeAccount::<T>::get(), burn_fee_b);
+
+		// increment burn transaction id
 		let mut burn_id = BurnTransactionID::get();
 		burn_id +=1;
 		BurnTransactionID::put(burn_id);
 
-		let amount_as_u64: u64 = amount.saturated_into::<u64>();
 		Self::deposit_event(RawEvent::BurnTransactionCreated(burn_id, target, amount_as_u64));
+
+		Ok(())
 	}
 
 	pub fn create_stellar_refund_transaction_or_add_sig(validator: T::AccountId, tx_hash: Vec<u8>, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
@@ -318,7 +384,7 @@ impl<T: Config> Module<T> {
 		// If majority aggrees on the transaction, mint tokens to target address
 		if mint_transaction.votes as usize >= (validators.len() / 2) + 1 {
 			debug::info!("enough votes, minting transaction...");
-			Self::mint_tft(tx_id.clone(), mint_transaction);
+			Self::mint_tft(tx_id.clone(), mint_transaction)?;
 		}
 
 		Ok(())

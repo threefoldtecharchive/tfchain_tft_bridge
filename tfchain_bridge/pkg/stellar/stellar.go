@@ -67,8 +67,8 @@ func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarW
 	return w, nil
 }
 
-func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, target string, amount uint64, txID uint64, includeWithdrawFee bool) (string, error) {
-	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
+func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, target string, amount uint64, txID uint64) (string, error) {
+	txnBuild, err := w.generatePaymentOperation(amount, target)
 	if err != nil {
 		return "", err
 	}
@@ -83,8 +83,8 @@ func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, tar
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
 }
 
-func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, includeWithdrawFee bool, signatures []pkg.StellarSignature) error {
-	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
+func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature) error {
+	txnBuild, err := w.generatePaymentOperation(amount, target)
 	if err != nil {
 		return err
 	}
@@ -110,8 +110,8 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 	return w.submitTransaction(ctx, txn)
 }
 
-func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, includeWithdrawFee bool, signatures []pkg.StellarSignature) error {
-	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
+func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature) error {
+	txnBuild, err := w.generatePaymentOperation(amount, target)
 	if err != nil {
 		return err
 	}
@@ -151,8 +151,8 @@ func (w *StellarWallet) GetKeypair() *keypair.Full {
 	return w.keypair
 }
 
-func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, target string, amount uint64, message string, includeWithdrawFee bool) (string, error) {
-	txnBuild, err := w.generatePaymentOperation(amount, target, includeWithdrawFee)
+func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, target string, amount uint64, message string) (string, error) {
+	txnBuild, err := w.generatePaymentOperation(amount, target)
 	if err != nil {
 		return "", err
 	}
@@ -177,7 +177,7 @@ func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, targ
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
 }
 
-func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string, includeWithdrawFee bool) (txnbuild.TransactionParams, error) {
+func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string) (txnbuild.TransactionParams, error) {
 	// if amount is zero, do nothing
 	if amount == 0 {
 		return txnbuild.TransactionParams{}, errors.New("invalid amount")
@@ -201,19 +201,6 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 		SourceAccount: sourceAccount.AccountID,
 	}
 	paymentOperations = append(paymentOperations, &paymentOP)
-
-	if includeWithdrawFee {
-		feePaymentOP := txnbuild.Payment{
-			Destination: w.config.StellarFeeWallet,
-			Amount:      big.NewRat(withdrawFee, stellarPrecision).FloatString(stellarPrecisionDigits),
-			Asset: txnbuild.CreditAsset{
-				Code:   asset[0],
-				Issuer: asset[1],
-			},
-			SourceAccount: sourceAccount.AccountID,
-		}
-		paymentOperations = append(paymentOperations, &feePaymentOP)
-	}
 
 	txnBuild := txnbuild.TransactionParams{
 		Operations:           paymentOperations,
@@ -364,23 +351,6 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 						err = mintFn(tx.Account, depositedAmount, tx.Hash)
 					}
 				}
-				if w.config.StellarFeeWallet != "" {
-					log.Info().Msgf("Trying to transfer the fees generated to the fee wallet", "address", w.config.StellarFeeWallet)
-
-					// convert tx hash string to bytes
-					parsedMessage, err := hex.DecodeString(tx.Hash)
-					if err != nil {
-						return
-					}
-					var memo [32]byte
-					copy(memo[:], parsedMessage)
-
-					err = refundFn(ctx, w.config.StellarFeeWallet, depositFee, tx.Hash)
-					if err != nil {
-						log.Error().Msgf("error while trying to create a payment to the fee wallet", "err", err.Error())
-					}
-				}
-
 				log.Info().Msg("Mint succesfull, saving cursor now")
 
 				// save cursor

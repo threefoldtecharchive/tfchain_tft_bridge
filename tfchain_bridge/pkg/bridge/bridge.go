@@ -20,8 +20,6 @@ var (
 )
 
 const (
-	// Depositing from Stellar to smart chain fee
-	DepositFee = 50 * 1e7
 	// Withdrawing from smartchain to Stellar fee
 	WithdrawFee   = int64(1 * 1e7)
 	BridgeNetwork = "stellar"
@@ -36,7 +34,6 @@ type Bridge struct {
 	blockPersistency *pkg.ChainPersistency
 	mut              sync.Mutex
 	config           *pkg.BridgeConfig
-	depositFee       *big.Int
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
@@ -79,15 +76,12 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 		}
 	}
 
-	var depositFee big.Int
-	depositFee.SetInt64(DepositFee)
 	bridge := &Bridge{
 		subClient:        subClient,
 		identity:         tfchainIdentity,
 		blockPersistency: blockPersistency,
 		wallet:           wallet,
 		config:           &cfg,
-		depositFee:       &depositFee,
 	}
 
 	return bridge, nil
@@ -187,14 +181,19 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 		return nil
 	}
 
-	if depositedAmount.Cmp(bridge.depositFee) <= 0 {
+	// fetch the configured depositfee
+	depositFee, err := bridge.subClient.GetDepositFee(&bridge.identity)
+	if err != nil {
+		return err
+	}
+
+	if depositedAmount.Cmp(big.NewInt(depositFee)) <= 0 {
 		log.Error().Int("amount", int(depositedAmount.Int64())).Str("txID", txID).Msg("Deposited amount is <= Fee, should be returned")
 		return errInsufficientDepositAmount
 	}
 	amount := &big.Int{}
-	amount.Sub(depositedAmount, bridge.depositFee)
 	// multiply the amount of tokens to be minted * the multiplier
-	amount.Mul(amount, big.NewInt(bridge.config.TokenMultiplier))
+	amount.Mul(depositedAmount, big.NewInt(bridge.config.TokenMultiplier))
 
 	substrateAddressBytes, err := getSubstrateAddressFromStellarAddress(receiver)
 	if err != nil {
@@ -242,7 +241,7 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 	amount = amount.Div(amount, big.NewInt(bridge.config.TokenMultiplier))
 	log.Info().Msgf("amount after division %+v", amount)
 
-	signature, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID), false)
+	signature, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
 	if err != nil {
 		return err
 	}
@@ -278,7 +277,7 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 	}
 
 	// todo add memo hash
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", false, burnTx.Signatures)
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", burnTx.Signatures)
 	if err != nil {
 		return err
 	}
@@ -298,7 +297,7 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 		return nil
 	}
 
-	signature, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash, false)
+	signature, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
 	if err != nil {
 		return err
 	}
@@ -328,7 +327,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 		return err
 	}
 
-	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, false, refund.Signatures)
+	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, refund.Signatures)
 	if err != nil {
 		return err
 	}

@@ -17,8 +17,7 @@ type StellarConfig struct {
 	// network for the stellar config
 	StellarNetwork string
 	// seed for the stellar bridge wallet
-	StellarSeed      string
-	StellarFeeWallet string
+	StellarSeed string
 }
 
 type StellarSignature struct {
