@@ -58,6 +58,10 @@ func (s *SubstrateClient) Refresh() error {
 	return nil
 }
 
+func (s *SubstrateClient) GetMeta() *types.Metadata {
+	return s.meta
+}
+
 func (s *SubstrateClient) getVersion(b types.StorageDataRaw) (uint32, error) {
 	var ver Versioned
 	if err := types.DecodeFromBytes(b, &ver); err != nil {
@@ -67,7 +71,7 @@ func (s *SubstrateClient) getVersion(b types.StorageDataRaw) (uint32, error) {
 	return ver.Version, nil
 }
 
-func (s *SubstrateClient) call(identity *Identity, call types.Call) (hash types.Hash, err error) {
+func (s *SubstrateClient) Call(identity *Identity, call types.Call) (hash types.Hash, err error) {
 	// Create the extrinsic
 	ext := types.NewExtrinsic(call)
 

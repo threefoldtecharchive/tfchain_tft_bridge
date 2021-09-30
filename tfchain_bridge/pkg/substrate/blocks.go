@@ -48,3 +48,7 @@ func (s *SubstrateClient) FetchEventsForBlockRange(start uint32, end uint32) (ty
 
 	return key, rawSet, nil
 }
+
+func (s *SubstrateClient) GetBlock(block types.Hash) (*types.SignedBlock, error) {
+	return s.cl.RPC.Chain.GetBlock(block)
+}

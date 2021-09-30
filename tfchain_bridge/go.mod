@@ -21,7 +21,6 @@ require (
 	github.com/go-errors/errors v0.0.0-20150906023321-a41850380601 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
-	github.com/gologme/log v1.2.0
 	github.com/gorilla/schema v1.1.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/gtank/merlin v0.1.1 // indirect
@@ -38,8 +37,7 @@ require (
 	github.com/rs/zerolog v1.25.0
 	github.com/segmentio/go-loggly v0.5.1-0.20171222203950-eb91657e62b2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/stellar/go v0.0.0-20210920115508-0599e8167019
-	github.com/stellar/go-xdr v0.0.0-20201028102745-f80a23dac78a // indirect
+	github.com/stellar/go v0.0.0-20210922122349-e6f322c047c5
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/vedhavyas/go-subkey v1.0.2
@@ -55,4 +53,5 @@ require (
 	github.com/libp2p/go-openssl v0.0.7 // indirect
 	github.com/minio/sha256-simd v0.1.1 // indirect
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
+	github.com/stellar/go-xdr v0.0.0-20201028102745-f80a23dac78a // indirect
 )

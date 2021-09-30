@@ -37,10 +37,10 @@ var errInsufficientDepositAmount = errors.New("deposited amount is <= Fee")
 // stellarWallet is the bridge wallet
 // Payments will be funded and fees will be taken with this wallet
 type StellarWallet struct {
-	keypair                   *keypair.Full
-	config                    *pkg.StellarConfig
-	stellarTransactionStorage *StellarTransactionStorage
-	signatureCount            int
+	keypair        *keypair.Full
+	config         *pkg.StellarConfig
+	signatureCount int
+	sequenceNumber int64
 }
 
 func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarWallet, error) {
@@ -50,11 +50,9 @@ func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarW
 		return nil, err
 	}
 
-	stellarTransactionStorage := NewStellarTransactionStorage(config.StellarNetwork, kp.Address())
 	w := &StellarWallet{
-		keypair:                   kp,
-		config:                    config,
-		stellarTransactionStorage: stellarTransactionStorage,
+		keypair: kp,
+		config:  config,
 	}
 
 	account, err := w.GetAccountDetails(config.StellarBridgeAccount)
@@ -64,27 +62,32 @@ func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarW
 	log.Info().Msgf("required signature count %d", int(account.Thresholds.MedThreshold))
 	w.signatureCount = int(account.Thresholds.MedThreshold)
 
+	w.sequenceNumber, err = account.GetSequenceNumber()
+	if err != nil {
+		return nil, err
+	}
+
 	return w, nil
 }
 
-func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, target string, amount uint64, txID uint64) (string, error) {
-	txnBuild, err := w.generatePaymentOperation(amount, target)
+func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, target string, amount uint64, txID uint64) (string, uint64, error) {
+	txnBuild, err := w.generatePaymentOperation(amount, target, 0)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	txn, err := w.createTransaction(ctx, txnBuild, true)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	signatures := txn.Signatures()
 
-	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
+	return base64.StdEncoding.EncodeToString(signatures[0].Signature), uint64(txn.SequenceNumber()), nil
 }
 
-func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature) error {
-	txnBuild, err := w.generatePaymentOperation(amount, target)
+func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber uint64) error {
+	txnBuild, err := w.generatePaymentOperation(amount, target, sequenceNumber)
 	if err != nil {
 		return err
 	}
@@ -110,8 +113,8 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 	return w.submitTransaction(ctx, txn)
 }
 
-func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature) error {
-	txnBuild, err := w.generatePaymentOperation(amount, target)
+func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber uint64) error {
+	txnBuild, err := w.generatePaymentOperation(amount, target, sequenceNumber)
 	if err != nil {
 		return err
 	}
@@ -147,19 +150,15 @@ func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.C
 	return w.submitTransaction(ctx, txn)
 }
 
-func (w *StellarWallet) GetKeypair() *keypair.Full {
-	return w.keypair
-}
-
-func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, target string, amount uint64, message string) (string, error) {
-	txnBuild, err := w.generatePaymentOperation(amount, target)
+func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, target string, amount uint64, message string) (string, uint64, error) {
+	txnBuild, err := w.generatePaymentOperation(amount, target, 0)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	parsedMessage, err := hex.DecodeString(message)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	var memo [32]byte
@@ -169,15 +168,15 @@ func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, targ
 
 	txn, err := w.createTransaction(ctx, txnBuild, true)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	signatures := txn.Signatures()
 
-	return base64.StdEncoding.EncodeToString(signatures[0].Signature), nil
+	return base64.StdEncoding.EncodeToString(signatures[0].Signature), uint64(txn.SequenceNumber()), nil
 }
 
-func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string) (txnbuild.TransactionParams, error) {
+func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string, sequenceNumber uint64) (txnbuild.TransactionParams, error) {
 	// if amount is zero, do nothing
 	if amount == 0 {
 		return txnbuild.TransactionParams{}, errors.New("invalid amount")
@@ -202,12 +201,18 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 	}
 	paymentOperations = append(paymentOperations, &paymentOP)
 
+	if sequenceNumber == 0 {
+		w.sequenceNumber = w.sequenceNumber + 1
+	} else {
+		w.sequenceNumber = int64(sequenceNumber)
+	}
+
 	txnBuild := txnbuild.TransactionParams{
 		Operations:           paymentOperations,
 		Timebounds:           txnbuild.NewInfiniteTimeout(),
-		SourceAccount:        &sourceAccount,
+		SourceAccount:        &txnbuild.SimpleAccount{AccountID: sourceAccount.AccountID, Sequence: w.sequenceNumber},
 		BaseFee:              txnbuild.MinBaseFee * 3,
-		IncrementSequenceNum: true,
+		IncrementSequenceNum: false,
 	}
 
 	return txnBuild, nil
@@ -219,16 +224,11 @@ func (w *StellarWallet) createTransaction(ctx context.Context, txn txnbuild.Tran
 		return nil, errors.Wrap(err, "failed to build transaction")
 	}
 
-	// check if a similar transaction with a memo was made before
-	exists, err := w.stellarTransactionStorage.TransactionWithMemoExists(tx)
+	xdr, err := tx.Base64()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to check transaction storage for existing transaction hash")
+		return nil, errors.Wrap(err, "failed to serialize transaction")
 	}
-	// if the transaction exists, return with nil error
-	if exists {
-		log.Info().Msg("Transaction with this hash already executed, skipping now..")
-		return nil, errors.New("transaction with this has already executed")
-	}
+	log.Info().Msgf("%s", xdr)
 
 	if sign {
 		tx, err = tx.Sign(w.GetNetworkPassPhrase(), w.keypair)
@@ -248,22 +248,23 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 	if err != nil {
 		return errors.Wrap(err, "failed to get horizon client")
 	}
+
 	// Submit the transaction
 	txResult, err := client.SubmitTransaction(txn)
 	if err != nil {
+		log.Info().Msg(err.Error())
 		if hError, ok := err.(*horizonclient.Error); ok {
-			log.Error().Msgf("Error submitting tx %+v", hError.Problem.Extras)
+			log.Info().Msgf("Error submitting tx %+v", hError.Problem.Extras)
 		}
 		return errors.Wrap(err, "error submitting transaction")
 	}
 	log.Info().Msg(fmt.Sprintf("transaction: %s submitted to the stellar network..", txResult.Hash))
 
-	w.stellarTransactionStorage.StoreTransactionWithMemo(txn)
-	if err != nil {
-		return errors.Wrap(err, "failed to store transaction with memo")
-	}
-
 	return nil
+}
+
+func (w *StellarWallet) GetKeypair() *keypair.Full {
+	return w.keypair
 }
 
 // mint handler
@@ -337,6 +338,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 									err := refundFn(ctx, paymentOpation.From, parsedAmount, tx.Hash)
 									if err != nil {
 										log.Error().Msgf("error while trying to refund user", "err", err.Error())
+										continue
 									}
 								}
 							}
@@ -436,10 +438,6 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 
 	}
 
-}
-
-func (w *StellarWallet) ScanBridgeAccount() error {
-	return w.stellarTransactionStorage.ScanBridgeAccount()
 }
 
 func (w *StellarWallet) getTransactionEffects(txHash string) (effects horizoneffects.EffectsPage, err error) {

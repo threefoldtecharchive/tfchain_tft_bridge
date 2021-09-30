@@ -48,18 +48,18 @@ func (s *SubstrateClient) IsMintedAlready(identity *Identity, mintTxID string) (
 	return true, nil
 }
 
-func (s *SubstrateClient) ProposeOrVoteMintTransaction(identity *Identity, txID string, target AccountID, amount *big.Int) error {
+func (s *SubstrateClient) ProposeOrVoteMintTransaction(identity *Identity, txID string, target AccountID, amount *big.Int) (*types.Call, error) {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.propose_or_vote_mint_transaction",
 		txID, target, types.U64(amount.Uint64()),
 	)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create call")
+		return nil, errors.Wrap(err, "failed to create call")
 	}
 
-	if _, err := s.call(identity, c); err != nil {
-		return errors.Wrap(err, "failed to propose or vote mint transaction")
-	}
+	// if _, err := s.call(identity, c); err != nil {
+	// 	return errors.Wrap(err, "failed to propose or vote mint transaction")
+	// }
 
-	return nil
+	return &c, nil
 }
