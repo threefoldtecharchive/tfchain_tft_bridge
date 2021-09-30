@@ -74,6 +74,10 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 		if err != nil {
 			return nil, err
 		}
+		err = blockPersistency.SaveHeight(0)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	bridge := &Bridge{
