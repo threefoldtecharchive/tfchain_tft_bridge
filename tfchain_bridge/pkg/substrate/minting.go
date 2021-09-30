@@ -16,7 +16,7 @@ var (
 type MintTransaction struct {
 	Amount types.U64
 	Target types.AccountID
-	Block  types.BlockNumber
+	Block  types.U32
 	Votes  types.U32
 }
 
