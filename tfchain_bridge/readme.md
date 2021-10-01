@@ -1,3 +1,5 @@
 # TFChain Bridge
 
-:construction: *UNDER CONSTRUCTION* :construction:
+TFT Bridge between Tfchain and stellar.
+
+Build instructions are explained in the [building document](building.md).
