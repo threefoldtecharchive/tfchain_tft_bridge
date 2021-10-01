@@ -1,10 +1,8 @@
 package substrate
 
 import (
-	"fmt"
-
+	"github.com/centrifuge/go-substrate-rpc-client/v3/rpc/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
-	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
 
@@ -73,70 +71,17 @@ type EventRecords struct {
 	TFTBridgeModule_RefundTransactionReady          []RefundTransactionReady          //nolint:stylecheck,golint
 }
 
-func (s *SubstrateClient) SubscribeEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, refundReadyChan chan RefundTransactionReady, blockpersistency *pkg.ChainPersistency) error {
+func (s *SubstrateClient) SubscribeEvents() (*state.StorageSubscription, types.StorageKey, error) {
 	// Subscribe to system events via storage
 	key, err := types.CreateStorageKey(s.meta, "System", "Events", nil)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	sub, err := s.cl.RPC.State.SubscribeStorageRaw([]types.StorageKey{key})
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer unsubscribe(sub)
-
-	// outer for loop for subscription notifications
-	for {
-		set := <-sub.Chan()
-		// inner loop for the changes within one of those notifications
-
-		err := s.ProcessEvents(burnChan, burnReadyChan, refundReadyChan, key, []types.StorageChangeSet{set})
-		if err != nil {
-			log.Err(err).Msg("error while processing events")
-		}
-
-		bl, err := s.cl.RPC.Chain.GetBlock(set.Block)
-		if err != nil {
-			return err
-		}
-		log.Debug().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", bl.Block.Header.Number)
-		err = blockpersistency.SaveHeight(uint32(bl.Block.Header.Number))
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (s *SubstrateClient) ProcessEvents(burnChan chan BurnTransactionCreated, burnReadyChan chan BurnTransactionReady, refundReadyChan chan RefundTransactionReady, key types.StorageKey, changeset []types.StorageChangeSet) error {
-	for _, set := range changeset {
-		for _, chng := range set.Changes {
-			if !types.Eq(chng.StorageKey, key) || !chng.HasStorageData {
-				// skip, we are only interested in events with content
-				continue
-			}
-
-			// Decode the event records
-			events := EventRecords{}
-			err := types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(s.meta, &events)
-			if err != nil {
-				fmt.Println(err)
-				log.Err(ErrFailedToDecode)
-			}
-
-			for _, e := range events.TFTBridgeModule_RefundTransactionReady {
-				refundReadyChan <- e
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-				burnChan <- e
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-				burnReadyChan <- e
-			}
-		}
-	}
-
-	return nil
+	// defer unsubscribe(sub)
+	return sub, key, err
 }

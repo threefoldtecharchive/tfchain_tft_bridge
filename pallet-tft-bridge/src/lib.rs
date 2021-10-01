@@ -10,7 +10,7 @@ use frame_support::{
 	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec},
 };
 use frame_system::{self as system, ensure_signed, ensure_root, RawOrigin};
-use sp_runtime::{DispatchResult};
+use sp_runtime::{DispatchResult, DispatchError};
 use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
 
@@ -72,6 +72,7 @@ decl_error! {
 		BurnTransactionExists,
 		BurnTransactionNotExists,
 		BurnSignatureExists,
+		EnoughBurnSignauresPresent,
 		RefundSignatureExists,
 		BurnTransactionAlreadyExecuted,
 		RefundTransactionNotExists,
@@ -101,7 +102,8 @@ pub struct BurnTransaction <AccountId, BlockNumber> {
 	pub block: BlockNumber,
 	pub amount: u64,
 	pub target: AccountId,
-	pub signatures: Vec<StellarSignature>
+	pub signatures: Vec<StellarSignature>,
+	pub sequence_number: u64,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
@@ -110,7 +112,8 @@ pub struct RefundTransaction <BlockNumber> {
 	pub amount: u64,
 	pub target: Vec<u8>,
 	pub tx_hash: Vec<u8>,
-	pub signatures: Vec<StellarSignature>
+	pub signatures: Vec<StellarSignature>,
+	pub sequence_number: u64,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
@@ -212,9 +215,9 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>){
+		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64){
             let validator = ensure_signed(origin)?;
-            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction_id, target, amount, signature, stellar_pub_key)?;
+            Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction_id, target, amount, signature, stellar_pub_key, sequence_number)?;
 		}
 
 		#[weight = 10_000]
@@ -224,9 +227,9 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn create_refund_transaction_or_add_sig(origin, tx_hash: Vec<u8>, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>){
+		fn create_refund_transaction_or_add_sig(origin, tx_hash: Vec<u8>, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64){
             let validator = ensure_signed(origin)?;
-            Self::create_stellar_refund_transaction_or_add_sig(validator, tx_hash, target, amount, signature, stellar_pub_key)?;
+            Self::create_stellar_refund_transaction_or_add_sig(validator, tx_hash, target, amount, signature, stellar_pub_key, sequence_number)?;
 		}
 
 		#[weight = 10_000]
@@ -314,7 +317,7 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn create_stellar_refund_transaction_or_add_sig(validator: T::AccountId, tx_hash: Vec<u8>, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
+	pub fn create_stellar_refund_transaction_or_add_sig(validator: T::AccountId, tx_hash: Vec<u8>, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64) -> DispatchResult {
 		Self::check_if_validator_exists(validator.clone())?;
 
 		// make sure we don't duplicate the transaction
@@ -329,7 +332,8 @@ impl<T: Config> Module<T> {
 			target: target.clone(),
 			amount,
 			tx_hash: tx_hash.clone(),
-			signatures: Vec::new()
+			signatures: Vec::new(),
+			sequence_number,
 		};
 		RefundTransactions::<T>::insert(tx_hash.clone(), &tx);
 
@@ -390,7 +394,7 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
+	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64) -> DispatchResult {
 		// check if it already has been executed in the past
 		ensure!(!ExecutedBurnTransactions::<T>::contains_key(tx_id), Error::<T>::BurnTransactionAlreadyExecuted);
 
@@ -405,7 +409,8 @@ impl<T: Config> Module<T> {
 			block: now,
 			target: target.clone(),
 			amount,
-			signatures: Vec::new()
+			signatures: Vec::new(),
+			sequence_number,
 		};
 		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
 
@@ -419,9 +424,22 @@ impl<T: Config> Module<T> {
 	pub fn add_stellar_sig_burn_transaction(tx_id: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
 		let mut tx = BurnTransactions::<T>::get(&tx_id);
 
+		let validators = Validators::<T>::get();
+		if tx.signatures.len() == (validators.len() / 2) + 1 {
+			return Err(DispatchError::from(Error::<T>::EnoughBurnSignauresPresent))
+		}
+
 		// check if the signature already exists
 		ensure!(!tx.signatures.iter().any(|sig| sig.stellar_pub_key == stellar_pub_key), Error::<T>::BurnSignatureExists);
 		ensure!(!tx.signatures.iter().any(|sig| sig.signature == signature), Error::<T>::BurnSignatureExists);
+
+		// if more then then the half of all validators
+		// submitted their signature we can emit an event that a transaction
+		// is ready to be submitted to the stellar network
+		if tx.signatures.len() >= (validators.len() / 2) + 1 {
+			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
+			return Ok(())
+		}
 
 		// add the signature
 		let stellar_signature = StellarSignature {
@@ -432,14 +450,11 @@ impl<T: Config> Module<T> {
 		tx.signatures.push(stellar_signature.clone());
 		BurnTransactions::<T>::insert(tx_id, &tx);
 		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id, stellar_signature));
-		
-		let validators = Validators::<T>::get();
-		// if more then then the half of all validators
-		// submitted their signature we can emit an event that a transaction
-		// is ready to be submitted to the stellar network
+
 		if tx.signatures.len() >= (validators.len() / 2) + 1 {
 			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
 			BurnTransactions::<T>::insert(tx_id, tx);
+			return Ok(())
 		}
 
 		Ok(())

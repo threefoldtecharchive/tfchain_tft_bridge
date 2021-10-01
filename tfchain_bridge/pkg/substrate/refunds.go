@@ -8,42 +8,43 @@ import (
 )
 
 type RefundTransaction struct {
-	Block      types.U32
-	Amount     types.U64
-	Target     string
-	TxHash     string
-	Signatures []pkg.StellarSignature
+	Block          types.U32
+	Amount         types.U64
+	Target         string
+	TxHash         string
+	Signatures     []pkg.StellarSignature
+	SequenceNumber types.U64
 }
 
-func (s *SubstrateClient) CreateRefundTransactionOrAddSig(identity *Identity, tx_hash string, target string, amount int64, signature string, stellarAddress string) error {
+func (s *SubstrateClient) CreateRefundTransactionOrAddSig(identity *Identity, tx_hash string, target string, amount int64, signature string, stellarAddress string, sequence_number uint64) (*types.Call, error) {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.create_refund_transaction_or_add_sig",
-		tx_hash, target, types.U64(amount), signature, stellarAddress,
+		tx_hash, target, types.U64(amount), signature, stellarAddress, sequence_number,
 	)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create call")
+		return nil, errors.Wrap(err, "failed to create call")
 	}
 
-	if _, err := s.call(identity, c); err != nil {
-		return errors.Wrap(err, "failed to propose or add sig for a refund transaction")
-	}
+	// if _, err := s.call(identity, c); err != nil {
+	// 	return errors.Wrap(err, "failed to propose or add sig for a refund transaction")
+	// }
 
-	return nil
+	return &c, nil
 }
 
-func (s *SubstrateClient) SetRefundTransactionExecuted(identity *Identity, txHash string) error {
+func (s *SubstrateClient) SetRefundTransactionExecuted(identity *Identity, txHash string) (*types.Call, error) {
 	log.Debug().Msg("setting refund transaction as executed")
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_refund_transaction_executed", txHash)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create call")
+		return nil, errors.Wrap(err, "failed to create call")
 	}
 
-	if _, err := s.call(identity, c); err != nil {
-		return errors.Wrap(err, "failed to set refund transaction executed")
-	}
+	// if _, err := s.call(identity, c); err != nil {
+	// 	return errors.Wrap(err, "failed to set refund transaction executed")
+	// }
 
-	return nil
+	return &c, nil
 }
 
 func (s *SubstrateClient) IsRefundedAlready(identity *Identity, txHash string) (exists bool, err error) {

@@ -18,10 +18,11 @@ var (
 )
 
 type BurnTransaction struct {
-	Block      types.U32
-	Amount     types.U64
-	Target     AccountID
-	Signatures []pkg.StellarSignature
+	Block          types.U32
+	Amount         types.U64
+	Target         AccountID
+	Signatures     []pkg.StellarSignature
+	SequenceNumber types.U64
 }
 
 func unsubscribe(sub *state.StorageSubscription) {
@@ -29,35 +30,35 @@ func unsubscribe(sub *state.StorageSubscription) {
 	sub.Unsubscribe()
 }
 
-func (s *SubstrateClient) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string, stellarAddress string) error {
+func (s *SubstrateClient) ProposeBurnTransactionOrAddSig(identity *Identity, txID uint64, target AccountID, amount *big.Int, signature string, stellarAddress string, sequence_number uint64) (*types.Call, error) {
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.propose_burn_transaction_or_add_sig",
-		txID, target, types.U64(amount.Uint64()), signature, stellarAddress,
+		txID, target, types.U64(amount.Uint64()), signature, stellarAddress, sequence_number,
 	)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create call")
+		return nil, errors.Wrap(err, "failed to create call")
 	}
 
-	if _, err := s.call(identity, c); err != nil {
-		return errors.Wrap(err, "failed to propose or add sig for a burn transaction")
-	}
+	// if _, err := s.call(identity, c); err != nil {
+	// 	return errors.Wrap(err, "failed to propose or add sig for a burn transaction")
+	// }
 
-	return nil
+	return &c, nil
 }
 
-func (s *SubstrateClient) SetBurnTransactionExecuted(identity *Identity, txID uint64) error {
+func (s *SubstrateClient) SetBurnTransactionExecuted(identity *Identity, txID uint64) (*types.Call, error) {
 	log.Debug().Msg("setting burn transaction as executed")
 	c, err := types.NewCall(s.meta, "TFTBridgeModule.set_burn_transaction_executed", txID)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create call")
+		return nil, errors.Wrap(err, "failed to create call")
 	}
 
-	if _, err := s.call(identity, c); err != nil {
-		return errors.Wrap(err, "failed to set burn transaction executed")
-	}
+	// if _, err := s.call(identity, c); err != nil {
+	// 	return errors.Wrap(err, "failed to set burn transaction executed")
+	// }
 
-	return nil
+	return &c, nil
 }
 
 func (s *SubstrateClient) GetBurnTransaction(identity *Identity, burnTransactionID types.U64) (*BurnTransaction, error) {
