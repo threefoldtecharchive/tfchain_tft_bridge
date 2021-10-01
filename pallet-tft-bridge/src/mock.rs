@@ -22,6 +22,7 @@ pub type Moment = u64;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<TestRuntime>;
 type Block = frame_system::mocking::MockBlock<TestRuntime>;
+pub type BlockNumber = u64;
 
 construct_runtime!(
 	pub enum TestRuntime where

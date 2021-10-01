@@ -199,6 +199,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 			}
 
 			for _, e := range events.TFTBridgeModule_RefundTransactionReady {
+				log.Info().Msg("found refund transaction ready event")
 				call, err := bridge.submitRefundTransaction(context.Background(), e)
 				if err != nil {
 					log.Err(err)
@@ -208,7 +209,8 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 			}
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-				call, err := bridge.proposeBurnTransactionOrAddSig(context.Background(), e)
+				log.Info().Msg("found burn transaction creted event")
+				call, err := bridge.proposeBurnTransaction(context.Background(), e, true)
 				if err != nil {
 					log.Err(err)
 					continue
@@ -217,6 +219,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 			}
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionReady {
+				log.Info().Msg("found burn transaction ready event")
 				call, err := bridge.submitBurnTransaction(context.Background(), e)
 				if err != nil {
 					log.Err(err).Msg("failed to submit burn transaction")
@@ -225,12 +228,33 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 				fmt.Println(call)
 				callChan <- *call
 			}
+
+			for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
+				log.Info().Msg("found burn transaction expired event")
+				call, err := bridge.proposeBurnTransaction(context.Background(), e, false)
+				if err != nil {
+					log.Err(err)
+					continue
+				}
+				callChan <- *call
+			}
+
+			for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
+				log.Info().Msgf("found expired refund transaction")
+				call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
+				if err != nil {
+					log.Err(err)
+					continue
+				}
+				callChan <- *call
+			}
 		}
 	}
 
 	return nil
 }
 
+// mint handler for stellar
 func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID string) error {
 	log.Info().Msg("calling mint now")
 	// TODO check if we already minted for this txid
@@ -287,24 +311,9 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	return nil
 }
 
+// refund handler for stellar
 func (bridge *Bridge) refund(ctx context.Context, destination string, amount int64, txHash string) error {
-	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, txHash)
-
-	if err != nil {
-		return err
-	}
-
-	if refunded {
-		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
-		return errors.New("tx refunded already")
-	}
-
-	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
-	if err != nil {
-		return err
-	}
-
-	call, err := bridge.subClient.CreateRefundTransactionOrAddSig(&bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	call, err := bridge.createRefund(ctx, destination, amount, txHash)
 	if err != nil {
 		return err
 	}
@@ -317,7 +326,51 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	return nil
 }
 
-func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated) (*types.Call, error) {
+func (bridge *Bridge) createRefund(ctx context.Context, destination string, amount int64, txHash string) (*types.Call, error) {
+	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, txHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if refunded {
+		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
+		return nil, errors.New("tx refunded already")
+	}
+
+	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
+	if err != nil {
+		return nil, err
+	}
+
+	return bridge.subClient.CreateRefundTransactionOrAddSig(&bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+}
+
+func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
+	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+	if err != nil {
+		return nil, err
+	}
+
+	if refunded {
+		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", string(refundReadyEvent.RefundTransactionHash))
+		return nil, errors.New("tx refunded already")
+	}
+
+	refund, err := bridge.subClient.GetRefundTransaction(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+	if err != nil {
+		return nil, err
+	}
+
+	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, refund.Signatures, int64(refund.SequenceNumber))
+	if err != nil {
+		return nil, err
+	}
+
+	return bridge.subClient.SetRefundTransactionExecuted(&bridge.identity, refund.TxHash)
+}
+
+func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated, divide bool) (*types.Call, error) {
+	log.Info().Msg("going to propose burn transaction")
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
 		return nil, err
@@ -334,14 +387,16 @@ func (bridge *Bridge) proposeBurnTransactionOrAddSig(ctx context.Context, burnCr
 	}
 
 	amount := big.NewInt(int64(burnCreatedEvent.Amount))
-	// divide the amount of tokens to be burned / the multiplier
-	amount = amount.Div(amount, big.NewInt(bridge.config.TokenMultiplier))
-	log.Info().Msgf("amount after division %+v", amount)
+	if divide {
+		// divide the amount of tokens to be burned / the multiplier
+		amount = amount.Div(amount, big.NewInt(bridge.config.TokenMultiplier))
+	}
 
 	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
 	if err != nil {
 		return nil, err
 	}
+	log.Info().Msgf("seq number: %d", sequenceNumber)
 
 	return bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
@@ -363,43 +418,24 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return nil, err
 	}
 
+	log.Info().Msgf("burn tx signatures +%v", burnTx.Signatures)
+	if len(burnTx.Signatures) == 0 {
+		log.Info().Msg("found 0 signatures, aborting")
+		return nil, errors.New("no signatures")
+	}
+
 	stellarAddress, err := getStellarAddressFromSubstrateAccountID(substrate.AccountID(burnTx.Target))
 	if err != nil {
 		return nil, err
 	}
 
 	// todo add memo hash
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", burnTx.Signatures, uint64(burnTx.SequenceNumber))
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
 	if err != nil {
 		return nil, err
 	}
 
 	return bridge.subClient.SetBurnTransactionExecuted(&bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
-}
-
-func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
-	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
-
-	if err != nil {
-		return nil, err
-	}
-
-	if refunded {
-		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", string(refundReadyEvent.RefundTransactionHash))
-		return nil, errors.New("tx refunded already")
-	}
-
-	refund, err := bridge.subClient.GetRefundTransaction(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
-	if err != nil {
-		return nil, err
-	}
-
-	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, refund.Signatures, uint64(refund.SequenceNumber))
-	if err != nil {
-		return nil, err
-	}
-
-	return bridge.subClient.SetRefundTransactionExecuted(&bridge.identity, refund.TxHash)
 }
 
 func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {

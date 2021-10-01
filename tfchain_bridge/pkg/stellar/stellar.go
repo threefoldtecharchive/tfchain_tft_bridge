@@ -66,6 +66,7 @@ func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarW
 	if err != nil {
 		return nil, err
 	}
+	log.Info().Msgf("account %s loaded with sequence number %d", account.AccountID, w.sequenceNumber)
 
 	return w, nil
 }
@@ -86,7 +87,7 @@ func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, tar
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), uint64(txn.SequenceNumber()), nil
 }
 
-func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber uint64) error {
+func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber int64) error {
 	txnBuild, err := w.generatePaymentOperation(amount, target, sequenceNumber)
 	if err != nil {
 		return err
@@ -113,7 +114,7 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 	return w.submitTransaction(ctx, txn)
 }
 
-func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber uint64) error {
+func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber int64) error {
 	txnBuild, err := w.generatePaymentOperation(amount, target, sequenceNumber)
 	if err != nil {
 		return err
@@ -176,7 +177,7 @@ func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, targ
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), uint64(txn.SequenceNumber()), nil
 }
 
-func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string, sequenceNumber uint64) (txnbuild.TransactionParams, error) {
+func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string, sequenceNumber int64) (txnbuild.TransactionParams, error) {
 	// if amount is zero, do nothing
 	if amount == 0 {
 		return txnbuild.TransactionParams{}, errors.New("invalid amount")

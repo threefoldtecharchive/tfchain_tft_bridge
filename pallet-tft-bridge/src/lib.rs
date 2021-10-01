@@ -41,21 +41,24 @@ decl_event!(
 		AccountId = <T as system::Config>::AccountId,
 		BlockNumber = <T as system::Config>::BlockNumber,
 	{
-		// Ming events
+		// Minting events
 		MintTransactionProposed(Vec<u8>, AccountId, u64),
 		MintTransactionVoted(Vec<u8>),
 		MintCompleted(AccountId, u64, BlockNumber),
+		MintTransactionExpired(Vec<u8>, u64, AccountId),
 		// Burn events
 		BurnTransactionCreated(u64, AccountId, u64),
 		BurnTransactionProposed(u64, AccountId, u64),
 		BurnTransactionSignatureAdded(u64, StellarSignature),
 		BurnTransactionReady(u64),
 		BurnTransactionProcessed(u64),
+		BurnTransactionExpired(u64, AccountId, u64),
 		// Refund events
 		RefundTransactionCreated(Vec<u8>, Vec<u8>, u64),
 		RefundTransactionsignatureAdded(Vec<u8>, StellarSignature),
 		RefundTransactionReady(Vec<u8>),
 		RefundTransactionProcessed(Vec<u8>),
+		RefundTransactionExpired(Vec<u8>, Vec<u8>, u64),
 	}
 );
 
@@ -122,6 +125,8 @@ pub struct StellarSignature {
 	pub stellar_pub_key: Vec<u8>
 }
 
+pub const AMOUNT_OF_BLOCKS_TO_EXPIRE: u64 = 20;
+
 decl_storage! {
 	trait Store for Module<T: Config> as TFTBridgeModule {
 		pub Validators get(fn validator_accounts): Vec<T::AccountId>;
@@ -129,7 +134,6 @@ decl_storage! {
 
 		// MintTransaction storage maps will contain all the transaction for a Stellar -> TF Chain swap
 		pub MintTransactions get(fn mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
-		pub ExpiredMintTransactions get(fn expired_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
 		pub ExecutedMintTransactions get(fn executed_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
 
 		// BurnTransaction storage maps will contain all the transaction for TF Chain -> Stellar swap
@@ -241,16 +245,41 @@ decl_module! {
 		fn on_finalize(block: T::BlockNumber) {
 			let current_block_u64: u64 = block.saturated_into::<u64>();
 
-			for (tx_id, tx) in MintTransactions::<T>::iter() {
+			for (tx_id, mut tx) in BurnTransactions::<T>::iter() {
 				let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
-				// if 100 blocks have passed since the tx got submitted
+				// if x blocks have passed since the tx got submitted
 				// we can safely assume this tx is fault
 				// add the faulty tx to the expired tx list
-				if current_block_u64 - tx_block_u64 >= 100 {
-					// Remove tx from storage
-					MintTransactions::<T>::remove(tx_id.clone());
-					// Insert into expired transactions list
-					ExpiredMintTransactions::<T>::insert(tx_id, tx);
+				if current_block_u64 - tx_block_u64 >= AMOUNT_OF_BLOCKS_TO_EXPIRE {
+					// reset signatures and sequence number
+					tx.signatures = Vec::new();
+					tx.sequence_number = 0;
+					tx.block = block;
+
+					// update tx in storage
+					BurnTransactions::<T>::insert(tx_id.clone(), &tx);
+
+					// Emit event
+					Self::deposit_event(RawEvent::BurnTransactionExpired(tx_id, tx.target, tx.amount));
+				}
+			}
+
+			for (tx_id, mut tx) in RefundTransactions::<T>::iter() {
+				let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
+				// if x blocks have passed since the tx got submitted
+				// we can safely assume this tx is fault
+				// add the faulty tx to the expired tx list
+				if current_block_u64 - tx_block_u64 >= AMOUNT_OF_BLOCKS_TO_EXPIRE {
+					// reset signatures and sequence number
+					tx.signatures = Vec::new();
+					tx.sequence_number = 0;
+					tx.block = block;
+
+					// update tx in storage
+					RefundTransactions::<T>::insert(tx_id.clone(), &tx);
+
+					// Emit event
+					Self::deposit_event(RawEvent::RefundTransactionCreated(tx_id, tx.target, tx.amount));
 				}
 			}
 		}
@@ -401,7 +430,7 @@ impl<T: Config> Module<T> {
 		Self::check_if_validator_exists(validator.clone())?;
 		
 		if BurnTransactions::<T>::contains_key(tx_id) {
-			return Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key);
+			return Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key, sequence_number);
 		}
 
 		let now = <frame_system::Module<T>>::block_number();
@@ -414,14 +443,14 @@ impl<T: Config> Module<T> {
 		};
 		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
 
-		Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key)?;
+		Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key, sequence_number)?;
 
 		Self::deposit_event(RawEvent::BurnTransactionProposed(tx_id, target, amount));
 
 		Ok(())
 	}
 
-	pub fn add_stellar_sig_burn_transaction(tx_id: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
+	pub fn add_stellar_sig_burn_transaction(tx_id: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64) -> DispatchResult {
 		let mut tx = BurnTransactions::<T>::get(&tx_id);
 
 		let validators = Validators::<T>::get();
@@ -447,6 +476,7 @@ impl<T: Config> Module<T> {
 			stellar_pub_key
 		};
 
+		tx.sequence_number = sequence_number;
 		tx.signatures.push(stellar_signature.clone());
 		BurnTransactions::<T>::insert(tx_id, &tx);
 		Self::deposit_event(RawEvent::BurnTransactionSignatureAdded(tx_id, stellar_signature));

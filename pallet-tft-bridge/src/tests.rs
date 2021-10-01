@@ -1,11 +1,12 @@
-// use crate::{mock::*, Error, RawEvent};
+use crate::{mock::*, Error, RawEvent};
 use frame_support::{assert_noop, assert_ok};
 use frame_system::{RawOrigin};
-use crate::{mock::*, Error};
 use sp_runtime::{DispatchError};
 use sp_runtime::{
 	traits::SaturatedConversion,
 };
+use crate::sp_api_hidden_includes_decl_storage::hidden_include::traits::OnFinalize;
+use crate::sp_api_hidden_includes_decl_storage::hidden_include::traits::OnInitialize;
 
 #[test]
 fn add_validator_works() {
@@ -83,7 +84,7 @@ fn proposing_burn_transaction_works() {
 	new_test_ext().execute_with(|| {
         prepare_validators();
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec()));        
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec(), 1));        
 	});
 }
 
@@ -91,7 +92,7 @@ fn proposing_burn_transaction_works() {
 fn proposing_burn_transaction_without_being_validator_fails() {
 	new_test_ext().execute_with(|| {
         assert_noop!(
-            TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec()),
+            TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec(), 1),
             Error::<TestRuntime>::ValidatorNotExists
         );
 	});
@@ -108,17 +109,16 @@ fn burn_flow() {
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), bob(), 750000000));
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 750000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec()));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 750000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec(), 1));     
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, bob(), 750000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec()));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, bob(), 750000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec(), 1));     
         
         let burn_tx = TFTBridgeModule::burn_transactions(1);
         assert_eq!(burn_tx.signatures.len(), 2);
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(eve()), 1, bob(), 750000000, "some_other_eve_sig".as_bytes().to_vec(), "eve_stellar_pubkey".as_bytes().to_vec()));
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(ferdie()), 1, bob(), 750000000, "some_other_ferdie_sig".as_bytes().to_vec(), "ferdie_stellar_pubkey".as_bytes().to_vec()));
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(eve()), 1, bob(), 750000000, "some_other_eve_sig".as_bytes().to_vec(), "eve_stellar_pubkey".as_bytes().to_vec(), 1));
         let executed_burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(executed_burn_tx.signatures.len(), 4);
+        assert_eq!(executed_burn_tx.signatures.len(), 3);
 
         let b = Balances::free_balance(bob());
 		let balances_as_u128: u128 = b.saturated_into::<u128>();
@@ -127,6 +127,57 @@ fn burn_flow() {
         let b = Balances::free_balance(TFTBridgeModule::fee_account());
 		let balances_as_u128: u128 = b.saturated_into::<u128>();
 		assert_eq!(balances_as_u128, 500000000);
+	});
+}
+
+#[test]
+fn burn_flow_expired() {
+	new_test_ext().execute_with(|| {
+        prepare_validators();
+
+        run_to_block(1);
+
+        let b = Balances::free_balance(bob());
+		let balances_as_u128: u128 = b.saturated_into::<u128>();
+		assert_eq!(balances_as_u128, 2500000000);
+
+        assert_ok!(TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), bob(), 750000000));
+
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 750000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec(), 1));     
+
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, bob(), 750000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec(), 1));     
+        
+        let burn_tx = TFTBridgeModule::burn_transactions(1);
+        assert_eq!(burn_tx.signatures.len(), 2);
+
+        run_to_block(102);
+        let burn_tx = TFTBridgeModule::burn_transactions(1);
+        assert_eq!(burn_tx.signatures.len(), 0);
+
+        // let expired_burn_tx = TFTBridgeModule::expired_burn_transactions(1);
+        // assert_eq!(expired_burn_tx.signatures.len(), 2);
+
+        // Test that the expected events were emitted
+		let our_events = System::events()
+		.into_iter()
+		.map(|r| r.event)
+		.filter_map(|e| {
+			if let Event::pallet_tft_bridge(inner) = e {
+				Some(inner)
+			} else {
+				None
+			}
+		})
+		.collect::<Vec<_>>();
+
+		let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> = vec![
+			RawEvent::BurnTransactionExpired(1, bob(), 750000000),
+		];
+		assert_eq!(our_events[4], expected_events[0]);
+
+        let burn_tx = TFTBridgeModule::burn_transactions(1);
+        assert_eq!(burn_tx.signatures.len(), 0);
+        assert_eq!(burn_tx.sequence_number, 0);
 	});
 }
 
@@ -151,4 +202,14 @@ fn prepare_validators() {
     TFTBridgeModule::set_fee_account(RawOrigin::Root.into(), ferdie()).unwrap();
     TFTBridgeModule::set_deposit_fee(RawOrigin::Root.into(), 500000000).unwrap();
     TFTBridgeModule::set_burn_fee(RawOrigin::Root.into(), 500000000).unwrap();
+}
+
+fn run_to_block(n: u64) {
+	while System::block_number() < n {
+		TFTBridgeModule::on_finalize(System::block_number());
+		System::on_finalize(System::block_number());
+		System::set_block_number(System::block_number() + 1);
+		System::on_initialize(System::block_number());
+		TFTBridgeModule::on_initialize(System::block_number());
+	}
 }

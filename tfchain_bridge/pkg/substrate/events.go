@@ -69,6 +69,9 @@ type EventRecords struct {
 	TFTBridgeModule_RefundTransactionCreated        []RefundTransactionCreated        //nolint:stylecheck,golint
 	TFTBridgeModule_RefundTransactionsignatureAdded []RefundTransactionsignatureAdded //nolint:stylecheck,golint
 	TFTBridgeModule_RefundTransactionReady          []RefundTransactionReady          //nolint:stylecheck,golint
+	TFTBridgeModule_BurnTransactionExpired          []BurnTransactionCreated          //nolint:stylecheck,golint
+	TFTBridgeModule_RefundTransactionExpired        []RefundTransactionCreated        //nolint:stylecheck,golint
+
 }
 
 func (s *SubstrateClient) SubscribeEvents() (*state.StorageSubscription, types.StorageKey, error) {
