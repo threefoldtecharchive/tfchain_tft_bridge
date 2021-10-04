@@ -75,11 +75,12 @@ decl_error! {
 		BurnTransactionExists,
 		BurnTransactionNotExists,
 		BurnSignatureExists,
-		EnoughBurnSignauresPresent,
+		EnoughBurnSignaturesPresent,
 		RefundSignatureExists,
 		BurnTransactionAlreadyExecuted,
 		RefundTransactionNotExists,
 		RefundTransactionAlreadyExecuted,
+		EnoughRefundSignaturesPresent,
 		NotEnoughBalanceToSwap,
 		AmountIsLessThanBurnFee,
 		AmountIsLessThanDepositFee,
@@ -279,7 +280,7 @@ decl_module! {
 					RefundTransactions::<T>::insert(tx_id.clone(), &tx);
 
 					// Emit event
-					Self::deposit_event(RawEvent::RefundTransactionCreated(tx_id, tx.target, tx.amount));
+					Self::deposit_event(RawEvent::RefundTransactionExpired(tx_id, tx.target, tx.amount));
 				}
 			}
 		}
@@ -352,7 +353,7 @@ impl<T: Config> Module<T> {
 		// make sure we don't duplicate the transaction
 		// ensure!(!MintTransactions::<T>::contains_key(tx_id.clone()), Error::<T>::MintTransactionExists);
 		if RefundTransactions::<T>::contains_key(tx_hash.clone()) {
-			return Self::add_stellar_sig_refund_transaction(tx_hash.clone(), signature, stellar_pub_key);
+			return Self::add_stellar_sig_refund_transaction(tx_hash.clone(), signature, stellar_pub_key, sequence_number);
 		}
 
 		let now = <frame_system::Module<T>>::block_number();
@@ -366,7 +367,7 @@ impl<T: Config> Module<T> {
 		};
 		RefundTransactions::<T>::insert(tx_hash.clone(), &tx);
 
-		Self::add_stellar_sig_refund_transaction(tx_hash.clone(), signature, stellar_pub_key)?;
+		Self::add_stellar_sig_refund_transaction(tx_hash.clone(), signature, stellar_pub_key, sequence_number)?;
 
 		Self::deposit_event(RawEvent::RefundTransactionCreated(tx_hash.clone(), target, amount));
 
@@ -455,20 +456,12 @@ impl<T: Config> Module<T> {
 
 		let validators = Validators::<T>::get();
 		if tx.signatures.len() == (validators.len() / 2) + 1 {
-			return Err(DispatchError::from(Error::<T>::EnoughBurnSignauresPresent))
+			return Err(DispatchError::from(Error::<T>::EnoughBurnSignaturesPresent))
 		}
 
 		// check if the signature already exists
 		ensure!(!tx.signatures.iter().any(|sig| sig.stellar_pub_key == stellar_pub_key), Error::<T>::BurnSignatureExists);
 		ensure!(!tx.signatures.iter().any(|sig| sig.signature == signature), Error::<T>::BurnSignatureExists);
-
-		// if more then then the half of all validators
-		// submitted their signature we can emit an event that a transaction
-		// is ready to be submitted to the stellar network
-		if tx.signatures.len() >= (validators.len() / 2) + 1 {
-			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
-			return Ok(())
-		}
 
 		// add the signature
 		let stellar_signature = StellarSignature {
@@ -484,7 +477,6 @@ impl<T: Config> Module<T> {
 		if tx.signatures.len() >= (validators.len() / 2) + 1 {
 			Self::deposit_event(RawEvent::BurnTransactionReady(tx_id));
 			BurnTransactions::<T>::insert(tx_id, tx);
-			return Ok(())
 		}
 
 		Ok(())
@@ -506,8 +498,13 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn add_stellar_sig_refund_transaction(tx_hash: Vec<u8>, signature: Vec<u8>, stellar_pub_key: Vec<u8>) -> DispatchResult {
+	pub fn add_stellar_sig_refund_transaction(tx_hash: Vec<u8>, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64) -> DispatchResult {
 		let mut tx = RefundTransactions::<T>::get(&tx_hash);
+
+		let validators = Validators::<T>::get();
+		if tx.signatures.len() == (validators.len() / 2) + 1 {
+			return Err(DispatchError::from(Error::<T>::EnoughRefundSignaturesPresent))
+		}
 
 		// check if the signature already exists
 		ensure!(!tx.signatures.iter().any(|sig| sig.stellar_pub_key == stellar_pub_key), Error::<T>::RefundSignatureExists);
@@ -519,11 +516,11 @@ impl<T: Config> Module<T> {
 			stellar_pub_key
 		};
 
+		tx.sequence_number = sequence_number;
 		tx.signatures.push(stellar_signature.clone());
 		RefundTransactions::<T>::insert(&tx_hash, &tx);
 		Self::deposit_event(RawEvent::RefundTransactionsignatureAdded(tx_hash.clone(), stellar_signature));
 		
-		let validators = Validators::<T>::get();
 		// if more then then the half of all validators
 		// submitted their signature we can emit an event that a transaction
 		// is ready to be submitted to the stellar network

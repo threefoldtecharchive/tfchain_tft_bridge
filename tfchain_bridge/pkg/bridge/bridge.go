@@ -202,7 +202,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 				log.Info().Msg("found refund transaction ready event")
 				call, err := bridge.submitRefundTransaction(context.Background(), e)
 				if err != nil {
-					log.Err(err)
+					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
 				callChan <- *call
@@ -212,7 +212,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 				log.Info().Msg("found burn transaction creted event")
 				call, err := bridge.proposeBurnTransaction(context.Background(), e, true)
 				if err != nil {
-					log.Err(err)
+					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
 				callChan <- *call
@@ -222,7 +222,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 				log.Info().Msg("found burn transaction ready event")
 				call, err := bridge.submitBurnTransaction(context.Background(), e)
 				if err != nil {
-					log.Err(err).Msg("failed to submit burn transaction")
+					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
 				fmt.Println(call)
@@ -233,7 +233,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 				log.Info().Msg("found burn transaction expired event")
 				call, err := bridge.proposeBurnTransaction(context.Background(), e, false)
 				if err != nil {
-					log.Err(err)
+					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
 				callChan <- *call
@@ -243,7 +243,7 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 				log.Info().Msgf("found expired refund transaction")
 				call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
 				if err != nil {
-					log.Err(err)
+					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
 				callChan <- *call
@@ -418,7 +418,6 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return nil, err
 	}
 
-	log.Info().Msgf("burn tx signatures +%v", burnTx.Signatures)
 	if len(burnTx.Signatures) == 0 {
 		log.Info().Msg("found 0 signatures, aborting")
 		return nil, errors.New("no signatures")

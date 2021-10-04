@@ -225,12 +225,6 @@ func (w *StellarWallet) createTransaction(ctx context.Context, txn txnbuild.Tran
 		return nil, errors.Wrap(err, "failed to build transaction")
 	}
 
-	xdr, err := tx.Base64()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to serialize transaction")
-	}
-	log.Info().Msgf("%s", xdr)
-
 	if sign {
 		tx, err = tx.Sign(w.GetNetworkPassPhrase(), w.keypair)
 		if err != nil {
@@ -250,16 +244,41 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 		return errors.Wrap(err, "failed to get horizon client")
 	}
 
-	// Submit the transaction
+	// Submit the transactions
 	txResult, err := client.SubmitTransaction(txn)
 	if err != nil {
 		log.Info().Msg(err.Error())
 		if hError, ok := err.(*horizonclient.Error); ok {
-			log.Info().Msgf("Error submitting tx %+v", hError.Problem.Extras)
+			resultCodes, ok := hError.Problem.Extras["result_codes"].(map[string]interface{})
+			if ok {
+				v := fmt.Sprint(resultCodes["transaction"])
+				if v == "tx_bad_seq" {
+					log.Info().Msgf("tx bad sequence received, resetting sequence numbers")
+					err = w.resetAccountSequence()
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 		}
 		return errors.Wrap(err, "error submitting transaction")
 	}
 	log.Info().Msg(fmt.Sprintf("transaction: %s submitted to the stellar network..", txResult.Hash))
+
+	return nil
+}
+
+func (w *StellarWallet) resetAccountSequence() error {
+	account, err := w.GetAccountDetails(w.config.StellarBridgeAccount)
+	if err != nil {
+		return err
+	}
+
+	w.sequenceNumber, err = account.GetSequenceNumber()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
