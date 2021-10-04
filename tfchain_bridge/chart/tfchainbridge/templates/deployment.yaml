@@ -50,9 +50,17 @@ spec:
             "--bridgewallet", "$(BRIDGE_WALLET_ADDRESS)",
             "--network", "$(STELLAR_NETWORK)",
             "--multiplier", "$(MULTIPLIER)",
+            "--persistency", "/storage/node.json",
           ]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: persistent-storage
+              mountPath: /storage
+      volumes:
+        - name: persistent-storage
+          persistentVolumeClaim:
+            claimName: tfchainbridge-volume-claim-{{ .Release.Name }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

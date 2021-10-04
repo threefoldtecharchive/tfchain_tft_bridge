@@ -40,21 +40,31 @@ securityContext:
 
 stellar_secret: ""
 
-# ws_url: wss://tfchain.dev.threefold.io
+# ws_url: ws://192.168.49.1:9944
 ws_url:
 
 tfchain_mnemonic: ""
 bridge_wallet_address: ""
 
 #network: production
-#network: "testnet"
+# network: "testnet"
 network:
 
 #multiplier: 2
 multiplier: 2
+
+volume:
+  size: 500Mi
+  existingpersistentVolumeClaim: ""
+  persistentVolume:
+    create: true
+    hostPath: "/storage"
 
 nodeSelector: {}
 
 tolerations: []
 
 affinity: {}
+
+threefoldVdc:
+  backup: ""
