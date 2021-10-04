@@ -36,6 +36,12 @@ type Bridge struct {
 	blockPersistency *pkg.ChainPersistency
 	mut              sync.Mutex
 	config           *pkg.BridgeConfig
+	extrinsicsChan   chan Extrinsic
+}
+
+type Extrinsic struct {
+	call types.Call
+	err  chan error
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
@@ -95,14 +101,19 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 
 func (bridge *Bridge) Start(ctx context.Context) error {
 	// all extrinsics to be submitted will be pushed to this channel
-	submitExtrinsicChan := make(chan types.Call)
+	submitExtrinsicChan := make(chan Extrinsic)
+	bridge.extrinsicsChan = submitExtrinsicChan
 
 	go func() {
-		for call := range submitExtrinsicChan {
+		for ext := range bridge.extrinsicsChan {
 			log.Info().Msgf("call ready to be submitted")
-			hash, err := bridge.subClient.Call(&bridge.identity, call)
+			hash, err := bridge.subClient.Call(&bridge.identity, ext.call)
 			if err != nil {
+				ext.err <- err
 				log.Error().Msgf("error occurred while submitting call %+v", err)
+			}
+			if ext.err != nil {
+				close(ext.err)
 			}
 			log.Info().Msgf("call submitted, hash=%s", hash.Hex())
 		}
@@ -122,7 +133,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			panic(err)
 		}
 
-		err = bridge.ProcessSubscription(sub, submitExtrinsicChan, key)
+		err = bridge.ProcessSubscription(sub, bridge.extrinsicsChan, key)
 		if err != nil {
 			log.Err(err)
 		}
@@ -160,7 +171,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	return nil
 }
 
-func (bridge *Bridge) ProcessSubscription(sub *state.StorageSubscription, callChan chan types.Call, key types.StorageKey) error {
+func (bridge *Bridge) ProcessSubscription(sub *state.StorageSubscription, callChan chan Extrinsic, key types.StorageKey) error {
 	for {
 		set := <-sub.Chan()
 		// inner loop for the changes within one of those notifications
@@ -182,7 +193,7 @@ func (bridge *Bridge) ProcessSubscription(sub *state.StorageSubscription, callCh
 	}
 }
 
-func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageKey, changeset []types.StorageChangeSet) error {
+func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKey, changeset []types.StorageChangeSet) error {
 	for _, set := range changeset {
 		for _, chng := range set.Changes {
 			if !types.Eq(chng.StorageKey, key) || !chng.HasStorageData {
@@ -205,7 +216,9 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
-				callChan <- *call
+				callChan <- Extrinsic{
+					call: *call,
+				}
 			}
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
@@ -215,7 +228,9 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
-				callChan <- *call
+				callChan <- Extrinsic{
+					call: *call,
+				}
 			}
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionReady {
@@ -226,7 +241,9 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 					continue
 				}
 				fmt.Println(call)
-				callChan <- *call
+				callChan <- Extrinsic{
+					call: *call,
+				}
 			}
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
@@ -236,7 +253,9 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
-				callChan <- *call
+				callChan <- Extrinsic{
+					call: *call,
+				}
 			}
 
 			for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
@@ -246,7 +265,9 @@ func (bridge *Bridge) processEvents(callChan chan types.Call, key types.StorageK
 					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
 				}
-				callChan <- *call
+				callChan <- Extrinsic{
+					call: *call,
+				}
 			}
 		}
 	}
@@ -302,12 +323,16 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	if err != nil {
 		return err
 	}
-	hash, err := bridge.subClient.Call(&bridge.identity, *call)
-	if err != nil {
+
+	errChan := make(chan error)
+	bridge.extrinsicsChan <- Extrinsic{
+		call: *call,
+		err:  errChan,
+	}
+
+	if err := <-errChan; err != nil {
 		return err
 	}
-	log.Info().Msgf("minting transaction included in hash %s", hash.Hex())
-
 	return nil
 }
 
@@ -317,12 +342,16 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	if err != nil {
 		return err
 	}
-	hash, err := bridge.subClient.Call(&bridge.identity, *call)
-	if err != nil {
+
+	errChan := make(chan error)
+	bridge.extrinsicsChan <- Extrinsic{
+		call: *call,
+		err:  errChan,
+	}
+
+	if err := <-errChan; err != nil {
 		return err
 	}
-	log.Info().Msgf("refund transaction included in hash %s", hash.Hex())
-
 	return nil
 }
 
