@@ -60,7 +60,7 @@ spec:
       volumes:
         - name: persistent-storage
           persistentVolumeClaim:
-            claimName: tfchainbridge-volume-claim-{{ .Release.Name }}
+            claimName: {{if .Values.volume.existingpersistentVolumeClaim }} {{.Values.volume.existingpersistentVolumeClaim}} {{ else }} tfchainbridge-volume-claim-{{ .Release.Name }} {{ end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
