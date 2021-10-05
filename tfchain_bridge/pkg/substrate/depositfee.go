@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var ErrDepositFeeNotFound = fmt.Errorf("burn tx not found")
+var ErrDepositFeeNotFound = fmt.Errorf("deposit fee not found")
 
 func (s *SubstrateClient) GetDepositFee(identity *Identity) (int64, error) {
 	var fee types.U64
