@@ -22,8 +22,6 @@ var (
 )
 
 const (
-	// Withdrawing from smartchain to Stellar fee
-	WithdrawFee   = int64(1 * 1e7)
 	BridgeNetwork = "stellar"
 )
 
@@ -37,6 +35,7 @@ type Bridge struct {
 	mut              sync.Mutex
 	config           *pkg.BridgeConfig
 	extrinsicsChan   chan Extrinsic
+	depositFee       int64
 }
 
 type Extrinsic struct {
@@ -88,12 +87,19 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 		}
 	}
 
+	// fetch the configured depositfee
+	depositFee, err := subClient.GetDepositFee(&tfchainIdentity)
+	if err != nil {
+		return nil, err
+	}
+
 	bridge := &Bridge{
 		subClient:        subClient,
 		identity:         tfchainIdentity,
 		blockPersistency: blockPersistency,
 		wallet:           wallet,
 		config:           &cfg,
+		depositFee:       depositFee,
 	}
 
 	return bridge, nil
@@ -121,7 +127,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 
 	go func() {
 		log.Info().Msg("starting minting subscription...")
-		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.refund, bridge.blockPersistency); err != nil {
+		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.refund, bridge.blockPersistency, bridge.depositFee); err != nil {
 			panic(err)
 		}
 	}()
@@ -289,13 +295,7 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 		return nil
 	}
 
-	// fetch the configured depositfee
-	depositFee, err := bridge.subClient.GetDepositFee(&bridge.identity)
-	if err != nil {
-		return err
-	}
-
-	if depositedAmount.Cmp(big.NewInt(depositFee)) <= 0 {
+	if depositedAmount.Cmp(big.NewInt(bridge.depositFee)) <= 0 {
 		log.Error().Int("amount", int(depositedAmount.Int64())).Str("txID", txID).Msg("Deposited amount is <= Fee, should be returned")
 		return errInsufficientDepositAmount
 	}
