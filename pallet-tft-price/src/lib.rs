@@ -19,7 +19,6 @@ use frame_system::{
 
 use sp_std::prelude::*;
 
-use lite_json::json::JsonValue;
 use sp_runtime::{
     offchain::{http, Duration}, DispatchResult,
 };
@@ -115,6 +114,14 @@ decl_module! {
 	}
 }
 
+use serde::{Deserialize};
+
+#[derive(Deserialize, Default)]
+struct PriceInfo {
+    #[serde(rename="USD")]
+	price: f64,
+}
+
 impl<T: Config> Module<T> {
     fn calculate_and_set_price(price: U16F16, block_number: T::BlockNumber) -> DispatchResult {
         TftPrice::put(price);
@@ -151,7 +158,7 @@ impl<T: Config> Module<T> {
         let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
  
         let request =
-            http::Request::get("https://min-api.cryptocompare.com/data/price?fsym=TFT&tsyms=USD");
+            http::Request::get("https://min-api.cryptocompare.com/data/price?fsym=3ft&tsyms=USD");
 
         let pending = request
             .deadline(deadline)
@@ -176,37 +183,9 @@ impl<T: Config> Module<T> {
             http::Error::Unknown
         })?;
 
-        let price = match Self::parse_price(body_str) {
-            Some(price) => Ok(price),
-            None => {
-                debug::warn!("Unable to extract price from the response: {:?}", body_str);
-                Err(http::Error::Unknown)
-            }
-        }?;
-        Ok(price)
-	}
-	
-	fn parse_price(price_str: &str) -> Option<f64> {
-        let val = lite_json::parse_json(price_str);
-        let price = val.ok().and_then(|v| match v {
-            JsonValue::Object(obj) => {
-                let mut chars = "USD".chars();
-                obj.into_iter()
-                    .find(|(k, _)| k.iter().all(|k| Some(*k) == chars.next()))
-                    .and_then(|v| match v.1 {
-                        JsonValue::Number(number) => Some(number),
-                        _ => None,
-                    })
-            }
-            _ => None,
-        })?;
-
-		let exp = price.fraction_length.checked_sub(2).unwrap_or(0);
-		
-		let price = 
-			(price.integer * 10_i64.pow(exp as u32) + price.fraction as i64) as f64
-			/ (100 * 10_u32.pow(exp as u32)) as f64;
-        Some(price)
+        let price_info: PriceInfo =
+			serde_json::from_str(&body_str).map_err(|_| http::Error::Unknown)?;
+        Ok(price_info.price)
 	}
 	
 	fn offchain_signed_tx(block_number: T::BlockNumber) -> Result<(), Error<T>> {
