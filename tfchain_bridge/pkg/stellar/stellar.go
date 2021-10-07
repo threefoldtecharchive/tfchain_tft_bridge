@@ -286,15 +286,15 @@ func (w *StellarWallet) GetKeypair() *keypair.Full {
 }
 
 // mint handler
-type mint func(string, *big.Int, string) error
+type mint func(string, *big.Int, hProtocol.Transaction) error
 
-// refund handler
-type refund func(context.Context, string, int64, string) error
+// // refund handler
+// type refund func(context.Context, string, int64, string) error
 
 // MonitorBridgeAccountAndMint is a blocking function that keeps monitoring
 // the bridge account on the Stellar network for new transactions and calls the
 // mint function when a deposit is made
-func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, refundFn refund, persistency *pkg.ChainPersistency, depositFee int64) error {
+func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, stellarCursor string) error {
 	transactionHandler := func(tx hProtocol.Transaction) {
 		if !tx.Successful {
 			return
@@ -343,66 +343,21 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 					continue
 				}
 
-				if depositedAmount.Cmp(big.NewInt(depositFee)) <= 0 {
-					// if the amount is lower than the depositFee, refund user
-					log.Error().Int("amount", int(depositedAmount.Int64())).Str("txID", tx.Hash).Msg("Deposited amount is <= Fee, should be returned")
-					err := refundFn(ctx, paymentOpation.From, parsedAmount, tx.Hash)
-					if err != nil {
-						log.Error().Msgf("error while trying to refund user", "err", err.Error())
-						continue
-					}
-				} else {
-					// if it's a valid amount, continue minting
-					err := w.mint(ctx, *persistency, mintFn, paymentOpation.From, tx, depositedAmount)
-					if err != nil {
-						log.Info().Msgf("error while minting %s", err.Error())
-						continue
+				err := mintFn(paymentOpation.From, depositedAmount, tx)
+				for err != nil {
+					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
+
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(10 * time.Second):
+						err = mintFn(tx.Account, depositedAmount, tx)
 					}
 				}
-
 			}
-
-		}
-
-	}
-
-	// get saved cursor
-	blockHeight, err := persistency.GetHeight()
-	for err != nil {
-		log.Warn().Msgf("Error getting the bridge persistency", "error", err)
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(5 * time.Second):
-			blockHeight, err = persistency.GetHeight()
 		}
 	}
-
-	return w.StreamBridgeStellarTransactions(ctx, blockHeight.StellarCursor, transactionHandler)
-}
-
-func (w *StellarWallet) mint(ctx context.Context, persistency pkg.ChainPersistency, mintFn mint, from string, tx hProtocol.Transaction, depositedAmount *big.Int) error {
-	err := mintFn(from, depositedAmount, tx.Hash)
-	for err != nil {
-		log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
-
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(10 * time.Second):
-			err = mintFn(tx.Account, depositedAmount, tx.Hash)
-		}
-	}
-	log.Info().Msg("Mint succesfull, saving cursor now")
-
-	// save cursor
-	cursor := tx.PagingToken()
-	err = persistency.SaveStellarCursor(cursor)
-	if err != nil {
-		log.Error().Msgf("error while saving cursor:", err.Error())
-		return err
-	}
-	return nil
+	return w.StreamBridgeStellarTransactions(ctx, stellarCursor, transactionHandler)
 }
 
 // GetAccountDetails gets account details based an a Stellar address

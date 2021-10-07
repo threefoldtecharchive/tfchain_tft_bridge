@@ -11,6 +11,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/rs/zerolog/log"
+	hProtocol "github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/strkey"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 	"github.com/threefoldtech/tfchain_bridge/pkg/stellar"
@@ -125,9 +126,14 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		}
 	}()
 
+	height, err := bridge.blockPersistency.GetHeight()
+	if err != nil {
+		return err
+	}
+
 	go func() {
 		log.Info().Msg("starting minting subscription...")
-		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, bridge.refund, bridge.blockPersistency, bridge.depositFee); err != nil {
+		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
 			panic(err)
 		}
 	}()
@@ -150,11 +156,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return err
 	}
 	log.Info().Msgf("current blockheight: %d", currentBlockNumber)
-
-	height, err := bridge.blockPersistency.GetHeight()
-	if err != nil {
-		return err
-	}
 
 	if height.LastHeight < currentBlockNumber {
 		// TODO replay all events from lastheight until current height
@@ -282,24 +283,26 @@ func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKe
 }
 
 // mint handler for stellar
-func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID string) error {
+func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, tx hProtocol.Transaction) error {
 	log.Info().Msg("calling mint now")
 	// TODO check if we already minted for this txid
-	minted, err := bridge.subClient.IsMintedAlready(&bridge.identity, txID)
+	minted, err := bridge.subClient.IsMintedAlready(&bridge.identity, tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
 		return err
 	}
 
 	if minted {
-		log.Error().Msgf("transaction with hash %s is already minted", txID)
+		log.Error().Msgf("transaction with hash %s is already minted", tx.Hash)
 		return nil
 	}
 
-	if depositedAmount.Cmp(big.NewInt(bridge.depositFee)) <= 0 {
-		log.Error().Int("amount", int(depositedAmount.Int64())).Str("txID", txID).Msg("Deposited amount is <= Fee, should be returned")
-		return errInsufficientDepositAmount
-	}
 	amount := &big.Int{}
+
+	// if the deposited amount is lower than the depositfee, trigger a refund
+	if depositedAmount.Cmp(big.NewInt(bridge.depositFee)) <= 0 {
+		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx.Hash)
+	}
+
 	// multiply the amount of tokens to be minted * the multiplier
 	amount.Mul(depositedAmount, big.NewInt(bridge.config.TokenMultiplier))
 
@@ -312,14 +315,14 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	if err != nil {
 		return err
 	}
-	log.Info().Int64("amount", amount.Int64()).Str("tx_id", txID).Msgf("target substrate address to mint on: %s", substrateAddress)
+	log.Info().Int64("amount", amount.Int64()).Str("tx_id", tx.Hash).Msgf("target substrate address to mint on: %s", substrateAddress)
 
 	accountID, err := substrate.FromAddress(substrateAddress)
 	if err != nil {
 		return err
 	}
 
-	call, err := bridge.subClient.ProposeOrVoteMintTransaction(&bridge.identity, txID, accountID, amount)
+	call, err := bridge.subClient.ProposeOrVoteMintTransaction(&bridge.identity, tx.Hash, accountID, amount)
 	if err != nil {
 		return err
 	}
@@ -333,6 +336,16 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, txID strin
 	if err := <-errChan; err != nil {
 		return err
 	}
+
+	log.Info().Msg("Mint succesfull, saving cursor now")
+	// save cursor
+	cursor := tx.PagingToken()
+	err = bridge.blockPersistency.SaveStellarCursor(cursor)
+	if err != nil {
+		log.Error().Msgf("error while saving cursor:", err.Error())
+		return err
+	}
+
 	return nil
 }
 
@@ -341,6 +354,10 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	call, err := bridge.createRefund(ctx, destination, amount, txHash)
 	if err != nil {
 		return err
+	}
+
+	if call == nil {
+		return nil
 	}
 
 	errChan := make(chan error)
@@ -363,7 +380,7 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 
 	if refunded {
 		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
-		return nil, errors.New("tx refunded already")
+		return nil, nil
 	}
 
 	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
