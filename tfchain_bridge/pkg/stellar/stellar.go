@@ -322,11 +322,6 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 			if creditedEffect.Asset.Code != asset[0] && creditedEffect.Asset.Issuer != asset[1] {
 				continue
 			}
-			parsedAmount, err := amount.ParseInt64(creditedEffect.Amount)
-			if err != nil {
-				continue
-			}
-			depositedAmount := big.NewInt(int64(parsedAmount))
 
 			ops, err := w.getOperationEffect(tx.Hash)
 			if err != nil {
@@ -343,7 +338,13 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 					continue
 				}
 
-				err := mintFn(paymentOpation.From, depositedAmount, tx)
+				parsedAmount, err := amount.ParseInt64(paymentOpation.Amount)
+				if err != nil {
+					continue
+				}
+				depositedAmount := big.NewInt(int64(parsedAmount))
+
+				err = mintFn(paymentOpation.From, depositedAmount, tx)
 				for err != nil {
 					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
 
