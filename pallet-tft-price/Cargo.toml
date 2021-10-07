@@ -22,7 +22,6 @@ version = '2.0.0'
 default-features = false
 git = "https://github.com/encointer/substrate-fixed"
 package = "substrate-fixed"
-# rev = "310e0d3a4c498b16ab7f790e99bbf6cf06e87a43"
 
 [dependencies]
 # Substrate packages
