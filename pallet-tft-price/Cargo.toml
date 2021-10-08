@@ -11,12 +11,8 @@ version = '1.0.0'
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
 
-[dependencies.fixed]
-default-features = false
-git = "https://github.com/encointer/substrate-fixed"
-package = "substrate-fixed"
-
 [dependencies]
+substrate-fixed = { git = 'https://github.com/encointer/substrate-fixed.git', rev = "b33d186888c60f38adafcfc0ec3a21aab263aef1" }
 parity-scale-codec = { version = '2.0', default-features = false, features = ['derive'] }
 parking_lot = '0.11'
 serde = { version = '1.0.100', default-features = false, features = ['derive'] }
@@ -43,5 +39,5 @@ std = [
 	'sp-runtime/std',
 	'sp-std/std',
 	'sp-arithmetic/std',
-	'sp-keystore/std',
+	'sp-keystore/std'
 ]

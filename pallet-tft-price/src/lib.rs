@@ -24,7 +24,7 @@ use sp_runtime::{
 };
 use sp_runtime::traits::SaturatedConversion;
 
-use fixed::{types::U16F16};
+use substrate_fixed::types::{U16F16};
 
 use sp_core::crypto::KeyTypeId;
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"tft!");
