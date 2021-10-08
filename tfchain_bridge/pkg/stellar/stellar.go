@@ -328,6 +328,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 				continue
 			}
 
+			senders := make(map[string]*big.Int)
 			for _, op := range ops.Embedded.Records {
 				if op.GetType() != "payment" {
 					continue
@@ -342,9 +343,20 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 				if err != nil {
 					continue
 				}
-				depositedAmount := big.NewInt(int64(parsedAmount))
 
-				err = mintFn(paymentOpation.From, depositedAmount, tx)
+				depositedAmount := big.NewInt(int64(parsedAmount))
+				if _, ok := senders[paymentOpation.From]; !ok {
+					senders[paymentOpation.From] = depositedAmount
+				} else {
+					senderAmount := senders[paymentOpation.From]
+					senderAmount = senderAmount.Add(senderAmount, depositedAmount)
+					senders[paymentOpation.From] = senderAmount
+				}
+
+			}
+
+			for sender, amount := range senders {
+				err = mintFn(sender, amount, tx)
 				for err != nil {
 					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
 
@@ -352,10 +364,11 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 					case <-ctx.Done():
 						return
 					case <-time.After(10 * time.Second):
-						err = mintFn(tx.Account, depositedAmount, tx)
+						err = mintFn(tx.Account, amount, tx)
 					}
 				}
 			}
+
 		}
 	}
 	return w.StreamBridgeStellarTransactions(ctx, stellarCursor, transactionHandler)
