@@ -28,8 +28,6 @@ const (
 
 	stellarPrecision       = 1e7
 	stellarPrecisionDigits = 7
-	withdrawFee            = int64(1 * 1e7)
-	depositFee             = 50 * 1e7
 )
 
 var errInsufficientDepositAmount = errors.New("deposited amount is <= Fee")
@@ -288,32 +286,20 @@ func (w *StellarWallet) GetKeypair() *keypair.Full {
 }
 
 // mint handler
-type mint func(string, *big.Int, string) error
+type mint func(string, *big.Int, hProtocol.Transaction) error
 
-// refund handler
-type refund func(context.Context, string, int64, string) error
+// // refund handler
+// type refund func(context.Context, string, int64, string) error
 
 // MonitorBridgeAccountAndMint is a blocking function that keeps monitoring
 // the bridge account on the Stellar network for new transactions and calls the
 // mint function when a deposit is made
-func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, refundFn refund, persistency *pkg.ChainPersistency) error {
+func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, stellarCursor string) error {
 	transactionHandler := func(tx hProtocol.Transaction) {
 		if !tx.Successful {
 			return
 		}
 		log.Info().Str("hash", tx.Hash).Msg("Received transaction on bridge stellar account")
-
-		// data, err := base64.StdEncoding.DecodeString(tx.Memo)
-		// if err != nil {
-		// 	log.Error("error decoding transaction memo", "error", err.Error())
-		// 	return
-		// }
-
-		// if len(data) != 20 {
-		// 	return
-		// }
-		// var subAddress SubstrateAddress
-		// copy(subAddress[0:20], data)
 
 		effects, err := w.getTransactionEffects(tx.Hash)
 		if err != nil {
@@ -327,79 +313,65 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 			if effect.GetAccount() != w.config.StellarBridgeAccount {
 				continue
 			}
-			if effect.GetType() == "account_credited" {
-				creditedEffect := effect.(horizoneffects.AccountCredited)
-				if creditedEffect.Asset.Code != asset[0] && creditedEffect.Asset.Issuer != asset[1] {
+
+			if effect.GetType() != "account_credited" {
+				continue
+			}
+
+			creditedEffect := effect.(horizoneffects.AccountCredited)
+			if creditedEffect.Asset.Code != asset[0] && creditedEffect.Asset.Issuer != asset[1] {
+				continue
+			}
+
+			ops, err := w.getOperationEffect(tx.Hash)
+			if err != nil {
+				continue
+			}
+
+			senders := make(map[string]*big.Int)
+			for _, op := range ops.Embedded.Records {
+				if op.GetType() != "payment" {
 					continue
 				}
-				parsedAmount, err := amount.ParseInt64(creditedEffect.Amount)
+
+				paymentOpation := op.(operations.Payment)
+				if paymentOpation.To != w.config.StellarBridgeAccount {
+					continue
+				}
+
+				parsedAmount, err := amount.ParseInt64(paymentOpation.Amount)
 				if err != nil {
 					continue
 				}
 
 				depositedAmount := big.NewInt(int64(parsedAmount))
+				if _, ok := senders[paymentOpation.From]; !ok {
+					senders[paymentOpation.From] = depositedAmount
+				} else {
+					senderAmount := senders[paymentOpation.From]
+					senderAmount = senderAmount.Add(senderAmount, depositedAmount)
+					senders[paymentOpation.From] = senderAmount
+				}
 
-				err = mintFn(tx.Account, depositedAmount, tx.Hash)
+			}
+
+			for sender, amount := range senders {
+				err = mintFn(sender, amount, tx)
 				for err != nil {
 					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
-
-					if err.Error() == errInsufficientDepositAmount.Error() {
-						log.Warn().Msgf("User is trying to swap less than the fee amount, refunding now", "amount", parsedAmount)
-						ops, err := w.getOperationEffect(tx.Hash)
-						if err != nil {
-							continue
-						}
-						for _, op := range ops.Embedded.Records {
-							if op.GetType() == "payment" {
-								paymentOpation := op.(operations.Payment)
-
-								if paymentOpation.To == w.config.StellarBridgeAccount {
-									log.Warn().Msg("Calling refund")
-									err := refundFn(ctx, paymentOpation.From, parsedAmount, tx.Hash)
-									if err != nil {
-										log.Error().Msgf("error while trying to refund user", "err", err.Error())
-										continue
-									}
-								}
-							}
-						}
-						return
-					}
 
 					select {
 					case <-ctx.Done():
 						return
 					case <-time.After(10 * time.Second):
-						err = mintFn(tx.Account, depositedAmount, tx.Hash)
+						err = mintFn(tx.Account, amount, tx)
 					}
 				}
-				log.Info().Msg("Mint succesfull, saving cursor now")
-
-				// save cursor
-				cursor := tx.PagingToken()
-				err = persistency.SaveStellarCursor(cursor)
-				if err != nil {
-					log.Error().Msgf("error while saving cursor:", err.Error())
-					return
-				}
 			}
-		}
 
-	}
-
-	// get saved cursor
-	blockHeight, err := persistency.GetHeight()
-	for err != nil {
-		log.Warn().Msgf("Error getting the bridge persistency", "error", err)
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(5 * time.Second):
-			blockHeight, err = persistency.GetHeight()
 		}
 	}
-
-	return w.StreamBridgeStellarTransactions(ctx, blockHeight.StellarCursor, transactionHandler)
+	return w.StreamBridgeStellarTransactions(ctx, stellarCursor, transactionHandler)
 }
 
 // GetAccountDetails gets account details based an a Stellar address

@@ -44,20 +44,20 @@ decl_event!(
 		// Minting events
 		MintTransactionProposed(Vec<u8>, AccountId, u64),
 		MintTransactionVoted(Vec<u8>),
-		MintCompleted(AccountId, u64, BlockNumber),
+		MintCompleted(MintTransaction<AccountId, BlockNumber>),
 		MintTransactionExpired(Vec<u8>, u64, AccountId),
 		// Burn events
 		BurnTransactionCreated(u64, AccountId, u64),
 		BurnTransactionProposed(u64, AccountId, u64),
 		BurnTransactionSignatureAdded(u64, StellarSignature),
 		BurnTransactionReady(u64),
-		BurnTransactionProcessed(u64),
+		BurnTransactionProcessed(BurnTransaction<AccountId, BlockNumber>),
 		BurnTransactionExpired(u64, AccountId, u64),
 		// Refund events
 		RefundTransactionCreated(Vec<u8>, Vec<u8>, u64),
 		RefundTransactionsignatureAdded(Vec<u8>, StellarSignature),
 		RefundTransactionReady(Vec<u8>),
-		RefundTransactionProcessed(Vec<u8>),
+		RefundTransactionProcessed(RefundTransaction<BlockNumber>),
 		RefundTransactionExpired(Vec<u8>, Vec<u8>, u64),
 	}
 );
@@ -288,7 +288,7 @@ decl_module! {
 }
 
 impl<T: Config> Module<T> {
-	pub fn mint_tft(tx_id: Vec<u8>, tx: MintTransaction<T::AccountId, T::BlockNumber>) -> DispatchResult {
+	pub fn mint_tft(tx_id: Vec<u8>, mut tx: MintTransaction<T::AccountId, T::BlockNumber>) -> DispatchResult {
 		let deposit_fee = DepositFee::get();
 		ensure!(tx.amount > deposit_fee, Error::<T>::AmountIsLessThanDepositFee);
 
@@ -306,10 +306,11 @@ impl<T: Config> Module<T> {
 		// Remove tx from storage
 		MintTransactions::<T>::remove(tx_id.clone());
 		// Insert into executed transactions
+        let now = <system::Module<T>>::block_number();
+		tx.block = now;
 		ExecutedMintTransactions::<T>::insert(tx_id, &tx);
 
-        let now = <system::Module<T>>::block_number();
-        Self::deposit_event(RawEvent::MintCompleted(tx.target, tx.amount, now));
+        Self::deposit_event(RawEvent::MintCompleted(tx));
 
 		Ok(())
     }
@@ -491,9 +492,9 @@ impl<T: Config> Module<T> {
 		let tx = BurnTransactions::<T>::get(tx_id);
 
 		BurnTransactions::<T>::remove(tx_id);
-		ExecutedBurnTransactions::<T>::insert(tx_id, tx);
+		ExecutedBurnTransactions::<T>::insert(tx_id, &tx);
 
-		Self::deposit_event(RawEvent::BurnTransactionProcessed(tx_id));
+		Self::deposit_event(RawEvent::BurnTransactionProcessed(tx));
 
 		Ok(())
 	}
@@ -541,9 +542,9 @@ impl<T: Config> Module<T> {
 		let tx = RefundTransactions::<T>::get(&tx_id);
 
 		RefundTransactions::<T>::remove(&tx_id);
-		ExecutedRefundTransactions::<T>::insert(tx_id.clone(), tx);
+		ExecutedRefundTransactions::<T>::insert(tx_id.clone(), &tx);
 
-		Self::deposit_event(RawEvent::RefundTransactionProcessed(tx_id));
+		Self::deposit_event(RawEvent::RefundTransactionProcessed(tx));
 
 		Ok(())
 	}
