@@ -21,7 +21,6 @@ go build .
 
 Create a Stellar wallet from the key that you generated.
 Transfer the TFT from your wallet to the bridge address GCMBZY4NGEV4CQYHJ6SXMRSTLTEOR2ERNKY6NH32LYCVDCN2E5CXZJOU. A depositfee of 1 TFT will be taken, so make sure you send a larger amount as 1 TFT.
-The amount deposited on TF Chain will be 2X the amount sent to the bridge wallet.
 
 ## TF Chain to Stellar
 
@@ -32,6 +31,6 @@ Select `Advanced creation options` -> Click `Schnorrkel (sr25519)` -> Select `Ed
 Browse to https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ftfchain.dev.threefold.io#/extrinsics , select tftBridgeModule and extrinsic: `swap_to_stellar`. Provide your substrate address and amount.
 Again, a withdrawfee of 1 TFT will be taken, so make sure you send a larger amount as 1 TFT.
 
-The amount withdrawn from TF Chain will be divided by 2 and sent to your stellar wallet.
+The amount withdrawn from TF Chain will be sent to your Stellar wallet.
 
 Example: ![swap_to_stellar](swap_to_stellar.png)
