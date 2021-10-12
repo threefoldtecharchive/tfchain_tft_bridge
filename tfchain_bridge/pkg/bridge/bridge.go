@@ -321,12 +321,7 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, tx hProtoc
 
 	// if there is a memo try to infer the destination address from it
 	if tx.Memo != "" {
-		chunks := strings.Split(tx.Memo, "_")
-		if len(chunks) != 2 {
-			// memo is not formatted correctly, issue a refund
-			return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
-		}
-		destinationSubstrateAddress, err = bridge.getSubstrateAddressFromMemo(chunks)
+		destinationSubstrateAddress, err = bridge.getSubstrateAddressFromMemo(tx.Memo)
 		if err != nil {
 			log.Info().Msgf("error while decoding tx memo, %s", err.Error())
 			// memo is not formatted correctly, issue a refund
@@ -529,13 +524,19 @@ func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {
 	return bytes, nil
 }
 
-func (bridge *Bridge) getSubstrateAddressFromMemo(memoParts []string) (string, error) {
-	id, err := strconv.Atoi(memoParts[1])
+func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {
+	chunks := strings.Split(memo, "_")
+	if len(chunks) != 2 {
+		// memo is not formatted correctly, issue a refund
+		return "", errors.New("memo text is not correctly formatted")
+	}
+
+	id, err := strconv.Atoi(chunks[1])
 	if err != nil {
 		return "", err
 	}
 
-	switch memoParts[0] {
+	switch chunks[0] {
 	case "twin":
 		twin, err := bridge.subClient.GetTwin(uint32(id))
 		if err != nil {
