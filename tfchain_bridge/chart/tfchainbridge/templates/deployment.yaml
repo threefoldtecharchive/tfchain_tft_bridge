@@ -41,15 +41,12 @@ spec:
             value: {{ .Values.bridge_wallet_address }}
           - name: STELLAR_NETWORK
             value: {{ .Values.network }}
-          - name: MULTIPLIER
-            value: {{ .Values.multiplier | quote }}
           args: [
             "--secret", "$(STELLAR_SECRET)",
             "--tfchainurl", "$(WS_URL)",
             "--tfchainseed", "$(TFCHAIN_MNEMONIC)",
             "--bridgewallet", "$(BRIDGE_WALLET_ADDRESS)",
             "--network", "$(STELLAR_NETWORK)",
-            "--multiplier", "$(MULTIPLIER)",
             "--persistency", "/storage/node.json",
           ]
           resources:

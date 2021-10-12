@@ -50,9 +50,6 @@ bridge_wallet_address: ""
 # network: "testnet"
 network:
 
-#multiplier: 2
-multiplier: 2
-
 volume:
   size: 500Mi
   existingpersistentVolumeClaim: ""
