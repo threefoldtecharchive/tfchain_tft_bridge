@@ -3,6 +3,7 @@ package substrate
 import (
 	"github.com/centrifuge/go-substrate-rpc-client/v3/rpc/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
+	"github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
 
@@ -12,7 +13,7 @@ import (
 type BurnTransactionCreated struct {
 	Phase             types.Phase
 	BurnTransactionID types.U64
-	Target            AccountID
+	Target            substrate.AccountID
 	Amount            types.U64
 	Topics            []types.Hash
 }
@@ -33,7 +34,7 @@ type BurnTransactionSignatureAdded struct {
 type BurnTransactionProposed struct {
 	Phase             types.Phase
 	BurnTransactionID types.U64
-	Target            AccountID
+	Target            substrate.AccountID
 	Amount            types.U64
 	Topics            []types.Hash
 }
@@ -75,13 +76,18 @@ type EventRecords struct {
 }
 
 func (s *SubstrateClient) SubscribeEvents() (*state.StorageSubscription, types.StorageKey, error) {
-	// Subscribe to system events via storage
-	key, err := types.CreateStorageKey(s.meta, "System", "Events", nil)
+	cl, meta, err := s.GetClient()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	sub, err := s.cl.RPC.State.SubscribeStorageRaw([]types.StorageKey{key})
+	// Subscribe to system events via storage
+	key, err := types.CreateStorageKey(meta, "System", "Events", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sub, err := cl.RPC.State.SubscribeStorageRaw([]types.StorageKey{key})
 	if err != nil {
 		return nil, nil, err
 	}

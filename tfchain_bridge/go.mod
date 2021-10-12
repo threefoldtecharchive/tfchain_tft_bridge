@@ -49,9 +49,13 @@ require (
 
 require (
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
+	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/libp2p/go-openssl v0.0.7 // indirect
 	github.com/minio/sha256-simd v0.1.1 // indirect
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/stellar/go-xdr v0.0.0-20201028102745-f80a23dac78a // indirect
+	github.com/threefoldtech/substrate-client v0.0.0-20211012091516-a95c7817db5c // indirect
 )
+
+// replace github.com/threefoldtech/substrate-client => /home/dylan/Projects/substrate-client
