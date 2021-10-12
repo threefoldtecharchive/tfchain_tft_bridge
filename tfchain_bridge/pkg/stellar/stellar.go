@@ -19,6 +19,7 @@ import (
 	horizoneffects "github.com/stellar/go/protocols/horizon/effects"
 	"github.com/stellar/go/protocols/horizon/operations"
 	"github.com/stellar/go/txnbuild"
+	"github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
 
@@ -85,7 +86,7 @@ func (w *StellarWallet) CreatePaymentAndReturnSignature(ctx context.Context, tar
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), uint64(txn.SequenceNumber()), nil
 }
 
-func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber int64) error {
+func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []substrate.StellarSignature, sequenceNumber int64) error {
 	txnBuild, err := w.generatePaymentOperation(amount, target, sequenceNumber)
 	if err != nil {
 		return err
@@ -112,7 +113,7 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 	return w.submitTransaction(ctx, txn)
 }
 
-func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []pkg.StellarSignature, sequenceNumber int64) error {
+func (w *StellarWallet) CreateRefundPaymentWithSignaturesAndSubmit(ctx context.Context, target string, amount uint64, txHash string, signatures []substrate.StellarSignature, sequenceNumber int64) error {
 	txnBuild, err := w.generatePaymentOperation(amount, target, sequenceNumber)
 	if err != nil {
 		return err
