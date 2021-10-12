@@ -230,7 +230,7 @@ func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKe
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
 				log.Info().Msg("found burn transaction creted event")
-				call, err := bridge.proposeBurnTransaction(context.Background(), e, true)
+				call, err := bridge.proposeBurnTransaction(context.Background(), e)
 				if err != nil {
 					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
@@ -255,7 +255,7 @@ func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKe
 
 			for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
 				log.Info().Msg("found burn transaction expired event")
-				call, err := bridge.proposeBurnTransaction(context.Background(), e, false)
+				call, err := bridge.proposeBurnTransaction(context.Background(), e)
 				if err != nil {
 					log.Info().Msgf("error occured: +%s", err.Error())
 					continue
@@ -302,9 +302,6 @@ func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, tx hProtoc
 	if depositedAmount.Cmp(big.NewInt(bridge.depositFee)) <= 0 {
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx.Hash)
 	}
-
-	// multiply the amount of tokens to be minted * the multiplier
-	amount.Mul(depositedAmount, big.NewInt(bridge.config.TokenMultiplier))
 
 	substrateAddressBytes, err := getSubstrateAddressFromStellarAddress(receiver)
 	if err != nil {
@@ -415,7 +412,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 	return bridge.subClient.SetRefundTransactionExecuted(&bridge.identity, refund.TxHash)
 }
 
-func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated, divide bool) (*types.Call, error) {
+func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BurnTransactionCreated) (*types.Call, error) {
 	log.Info().Msg("going to propose burn transaction")
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
@@ -433,11 +430,6 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 	}
 
 	amount := big.NewInt(int64(burnCreatedEvent.Amount))
-	if divide {
-		// divide the amount of tokens to be burned / the multiplier
-		amount = amount.Div(amount, big.NewInt(bridge.config.TokenMultiplier))
-	}
-
 	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
 	if err != nil {
 		return nil, err

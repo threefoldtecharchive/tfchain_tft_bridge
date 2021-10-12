@@ -7,7 +7,6 @@ type BridgeConfig struct {
 	TfchainSeed         string
 	RescanBridgeAccount bool
 	PersistencyFile     string
-	TokenMultiplier     int64
 	StellarConfig
 }
 

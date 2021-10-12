@@ -22,7 +22,6 @@ func main() {
 	flag.StringVar(&bridgeCfg.StellarSeed, "secret", "", "stellar secret")
 	flag.StringVar(&bridgeCfg.StellarNetwork, "network", "testnet", "stellar network url")
 	flag.StringVar(&bridgeCfg.PersistencyFile, "persistency", "./node.json", "file where last seen blockheight and stellar account cursor is stored")
-	flag.Int64Var(&bridgeCfg.TokenMultiplier, "multiplier", 1, "multiplier indicates how many tokens * multiplier must be minted on target chain")
 	flag.BoolVar(&bridgeCfg.RescanBridgeAccount, "rescan", false, "if true is provided, we rescan the bridge stellar account and mint all transactions again")
 
 	flag.Parse()
