@@ -39,7 +39,6 @@ require (
 	github.com/stellar/go v0.0.0-20210922122349-e6f322c047c5
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-	github.com/threefoldtech/substrate-client v0.0.0-20211012091516-a95c7817db5c
 	github.com/vedhavyas/go-subkey v1.0.2
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
@@ -56,6 +55,7 @@ require (
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/stellar/go-xdr v0.0.0-20201028102745-f80a23dac78a // indirect
 	golang.org/x/crypto v0.0.0-20210920023735-84f357641f63 // indirect
+	github.com/threefoldtech/substrate-client v0.0.0-20211013082909-7a2a542d1274 // indirect
 )
 
 // replace github.com/threefoldtech/substrate-client => /home/dylan/Projects/substrate-client
