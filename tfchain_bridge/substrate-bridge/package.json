@@ -1,0 +1,49 @@
+{
+  "name": "substrate-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@material-ui/core": "^4.12.3",
+    "@polkadot/api": "^6.3.1",
+    "@polkadot/extension-dapp": "^0.40.3",
+    "@polkadot/ui-keyring": "^0.85.5",
+    "@polkadot/ui-settings": "^0.85.5",
+    "@testing-library/jest-dom": "^5.11.4",
+    "@testing-library/react": "^11.1.0",
+    "@testing-library/user-event": "^12.1.10",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-dotenv": "^0.1.3",
+    "react-scripts": "4.0.3",
+    "stellar-sdk": "^9.0.1",
+    "web-vitals": "^1.0.1"
+  },
+  "scripts": {
+    "start": "react-dotenv && react-scripts start",
+    "build": "react-dotenv && react-scripts build",
+    "serve": "react-dotenv && serve build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "react-dotenv": {
+    "whitelist": ["STELLAR_HORIZON_URL", "TFT_ASSET_ISSUER", "BRIDGE_TFT_ADDRESS"]
+  }
+}
