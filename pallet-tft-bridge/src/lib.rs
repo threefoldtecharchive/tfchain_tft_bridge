@@ -47,12 +47,12 @@ decl_event!(
 		MintCompleted(MintTransaction<AccountId, BlockNumber>),
 		MintTransactionExpired(Vec<u8>, u64, AccountId),
 		// Burn events
-		BurnTransactionCreated(u64, AccountId, u64),
-		BurnTransactionProposed(u64, AccountId, u64),
+		BurnTransactionCreated(u64, Vec<u8>, u64),
+		BurnTransactionProposed(u64, Vec<u8>, u64),
 		BurnTransactionSignatureAdded(u64, StellarSignature),
 		BurnTransactionReady(u64),
-		BurnTransactionProcessed(BurnTransaction<AccountId, BlockNumber>),
-		BurnTransactionExpired(u64, AccountId, u64),
+		BurnTransactionProcessed(BurnTransaction<BlockNumber>),
+		BurnTransactionExpired(u64, Vec<u8>, u64),
 		// Refund events
 		RefundTransactionCreated(Vec<u8>, Vec<u8>, u64),
 		RefundTransactionsignatureAdded(Vec<u8>, StellarSignature),
@@ -102,10 +102,10 @@ pub struct MintTransaction <AccountId, BlockNumber>{
 // TF Chain -> Stellar burn transaction
 // Transaction is ready when (number of validators / 2) + 1 signatures are present
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
-pub struct BurnTransaction <AccountId, BlockNumber> {
+pub struct BurnTransaction <BlockNumber> {
 	pub block: BlockNumber,
 	pub amount: u64,
-	pub target: AccountId,
+	pub target: Vec<u8>,
 	pub signatures: Vec<StellarSignature>,
 	pub sequence_number: u64,
 }
@@ -138,8 +138,8 @@ decl_storage! {
 		pub ExecutedMintTransactions get(fn executed_mint_transactions): map hasher(blake2_128_concat) Vec<u8> => MintTransaction<T::AccountId, T::BlockNumber>;
 
 		// BurnTransaction storage maps will contain all the transaction for TF Chain -> Stellar swap
-		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::AccountId, T::BlockNumber>;
-		pub ExecutedBurnTransactions get(fn executed_burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::AccountId, T::BlockNumber>;
+		pub BurnTransactions get(fn burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::BlockNumber>;
+		pub ExecutedBurnTransactions get(fn executed_burn_transactions): map hasher(blake2_128_concat) u64 => BurnTransaction<T::BlockNumber>;
 
 		// RefundTransaction storage maps will contain all the refund transactions
 		// Maps a stellar transactionhash to a refund transaction
@@ -208,9 +208,9 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn swap_to_stellar(origin, target: T::AccountId, amount: BalanceOf<T>){
-            ensure_signed(origin)?;
-            Self::burn_tft(target, amount)?;
+		fn swap_to_stellar(origin, target_stellar_address: Vec<u8>, amount: BalanceOf<T>){
+            let source = ensure_signed(origin)?;
+            Self::burn_tft(source, target_stellar_address, amount)?;
 		}
 		
 		#[weight = 10_000]
@@ -220,7 +220,7 @@ decl_module! {
 		}
 
 		#[weight = 10_000]
-		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64){
+		fn propose_burn_transaction_or_add_sig(origin, transaction_id: u64, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64){
             let validator = ensure_signed(origin)?;
             Self::propose_stellar_burn_transaction_or_add_sig(validator, transaction_id, target, amount, signature, stellar_pub_key, sequence_number)?;
 		}
@@ -315,23 +315,19 @@ impl<T: Config> Module<T> {
 		Ok(())
     }
 
-    pub fn burn_tft(target: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+    pub fn burn_tft(source: T::AccountId, target_stellar_address: Vec<u8>, amount: BalanceOf<T>) -> DispatchResult {
 		let burn_fee = BurnFee::get();
 		let burn_fee_b = BalanceOf::<T>::saturated_from(burn_fee);
-		let free_balance: BalanceOf<T> = T::Currency::free_balance(&target);
-
-		// Make sure the user has enough balance to cover the withdraw
-		ensure!(free_balance >= amount, Error::<T>::NotEnoughBalanceToSwap);
-
+		let free_balance: BalanceOf<T> = T::Currency::free_balance(&source);
+		
 		// Make sure the user wants to swap more than the burn fee
 		ensure!(amount > burn_fee_b, Error::<T>::AmountIsLessThanBurnFee);
-		
-		// calculate amount - burn fee
-		let new_amount = amount - burn_fee_b;
-		let amount_as_u64: u64 = new_amount.saturated_into::<u64>();
 
+		// Make sure the user has enough balance to swap the amount
+		ensure!(free_balance >= amount, Error::<T>::NotEnoughBalanceToSwap);
+		
 		// transfer amount - fee to target account
-        let imbalance = T::Currency::slash(&target, new_amount).0;
+        let imbalance = T::Currency::slash(&source, amount).0;
         T::Burn::on_unbalanced(imbalance);
 
 		// transfer burn fee to fee wallet
@@ -343,7 +339,8 @@ impl<T: Config> Module<T> {
 		burn_id +=1;
 		BurnTransactionID::put(burn_id);
 
-		Self::deposit_event(RawEvent::BurnTransactionCreated(burn_id, target, amount_as_u64));
+		let burn_amount_as_u64 = amount.saturated_into::<u64>() - burn_fee;
+		Self::deposit_event(RawEvent::BurnTransactionCreated(burn_id, target_stellar_address, burn_amount_as_u64));
 
 		Ok(())
 	}
@@ -425,7 +422,7 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: T::AccountId, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64) -> DispatchResult {
+	pub fn propose_stellar_burn_transaction_or_add_sig(validator: T::AccountId, tx_id: u64, target: Vec<u8>, amount: u64, signature: Vec<u8>, stellar_pub_key: Vec<u8>, sequence_number: u64) -> DispatchResult {
 		// check if it already has been executed in the past
 		ensure!(!ExecutedBurnTransactions::<T>::contains_key(tx_id), Error::<T>::BurnTransactionAlreadyExecuted);
 

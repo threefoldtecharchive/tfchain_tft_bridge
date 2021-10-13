@@ -84,7 +84,7 @@ fn proposing_burn_transaction_works() {
 	new_test_ext().execute_with(|| {
         prepare_validators();
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec(), 1));        
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, "some_stellar_address".as_bytes().to_vec(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec(), 1));        
 	});
 }
 
@@ -92,8 +92,24 @@ fn proposing_burn_transaction_works() {
 fn proposing_burn_transaction_without_being_validator_fails() {
 	new_test_ext().execute_with(|| {
         assert_noop!(
-            TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec(), 1),
+            TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, "some_stellar_address".as_bytes().to_vec(), 2, "some_sig".as_bytes().to_vec(), "some_stellar_pubkey".as_bytes().to_vec(), 1),
             Error::<TestRuntime>::ValidatorNotExists
+        );
+	});
+}
+
+#[test]
+fn cannot_burn_more_than_balance_plus_fee() {
+	new_test_ext().execute_with(|| {
+        prepare_validators();
+
+        let b = Balances::free_balance(bob());
+		let balances_as_u128: u128 = b.saturated_into::<u128>();
+		assert_eq!(balances_as_u128, 2500000000);
+
+        assert_noop!(
+            TFTBridgeModule::swap_to_stellar(Origin::signed(bob()), "some_stellar_address".as_bytes().to_vec(), 2500000001),
+            Error::<TestRuntime>::NotEnoughBalanceToSwap
         );
 	});
 }
@@ -107,22 +123,22 @@ fn burn_flow() {
 		let balances_as_u128: u128 = b.saturated_into::<u128>();
 		assert_eq!(balances_as_u128, 2500000000);
 
-        assert_ok!(TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), bob(), 750000000));
+        assert_ok!(TFTBridgeModule::swap_to_stellar(Origin::signed(bob()), "some_stellar_address".as_bytes().to_vec(), 2000000000));
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 750000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec(), 1));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, "some_stellar_address".as_bytes().to_vec(), 2000000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec(), 1));     
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, bob(), 750000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec(), 1));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, "some_stellar_address".as_bytes().to_vec(), 2000000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec(), 1));     
         
         let burn_tx = TFTBridgeModule::burn_transactions(1);
         assert_eq!(burn_tx.signatures.len(), 2);
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(eve()), 1, bob(), 750000000, "some_other_eve_sig".as_bytes().to_vec(), "eve_stellar_pubkey".as_bytes().to_vec(), 1));
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(eve()), 1, "some_stellar_address".as_bytes().to_vec(), 2000000000, "some_other_eve_sig".as_bytes().to_vec(), "eve_stellar_pubkey".as_bytes().to_vec(), 1));
         let executed_burn_tx = TFTBridgeModule::burn_transactions(1);
         assert_eq!(executed_burn_tx.signatures.len(), 3);
 
         let b = Balances::free_balance(bob());
 		let balances_as_u128: u128 = b.saturated_into::<u128>();
-		assert_eq!(balances_as_u128, 2250000000);
+		assert_eq!(balances_as_u128, 500000000);
 
         let b = Balances::free_balance(TFTBridgeModule::fee_account());
 		let balances_as_u128: u128 = b.saturated_into::<u128>();
@@ -141,11 +157,11 @@ fn burn_flow_expired() {
 		let balances_as_u128: u128 = b.saturated_into::<u128>();
 		assert_eq!(balances_as_u128, 2500000000);
 
-        assert_ok!(TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), bob(), 750000000));
+        assert_ok!(TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), "some_stellar_address".as_bytes().to_vec(), 750000000));
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, bob(), 750000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec(), 1));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(alice()), 1, "some_stellar_address".as_bytes().to_vec(), 750000000, "alice_sig".as_bytes().to_vec(), "alice_stellar_pubkey".as_bytes().to_vec(), 1));     
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, bob(), 750000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec(), 1));     
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(Origin::signed(bob()), 1, "some_stellar_address".as_bytes().to_vec(), 750000000, "bob_sig".as_bytes().to_vec(), "bob_stellar_pubkey".as_bytes().to_vec(), 1));     
         
         let burn_tx = TFTBridgeModule::burn_transactions(1);
         assert_eq!(burn_tx.signatures.len(), 2);
@@ -171,7 +187,7 @@ fn burn_flow_expired() {
 		.collect::<Vec<_>>();
 
 		let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> = vec![
-			RawEvent::BurnTransactionExpired(1, bob(), 750000000),
+			RawEvent::BurnTransactionExpired(1, "some_stellar_address".as_bytes().to_vec(), 750000000),
 		];
 		assert_eq!(our_events[4], expected_events[0]);
 
@@ -187,7 +203,7 @@ fn burn_fails_if_less_than_burn_fee_amount() {
         prepare_validators();
 
         assert_noop!(
-            TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), bob(), 490000000),
+            TFTBridgeModule::swap_to_stellar(Origin::signed(alice()), "some_stellar_address".as_bytes().to_vec(), 490000000),
             Error::<TestRuntime>::AmountIsLessThanBurnFee
         );
 	});
