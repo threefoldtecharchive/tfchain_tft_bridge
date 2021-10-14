@@ -30,7 +30,8 @@ pub struct ValueStruct {
     value: U16F16,
 }
 type BufferIndex = u16;
-
+#[cfg(test)]
+mod tests;
 pub mod crypto {
     use crate::KEY_TYPE;
     use sp_core::sr25519::Signature as Sr25519Signature;
@@ -232,6 +233,9 @@ impl<T: Config> Module<T> {
                 sum += value;
                 counter += U16F16::from_num(1);
             }
+        }
+        if counter == U16F16::from_num(0) {
+            return U16F16::from_num(0);
         }
         sum / counter
     }
