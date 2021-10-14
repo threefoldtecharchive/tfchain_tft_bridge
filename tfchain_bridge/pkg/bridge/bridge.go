@@ -290,8 +290,23 @@ func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKe
 }
 
 // mint handler for stellar
-func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, tx hProtocol.Transaction) error {
+func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction) error {
 	log.Info().Msg("calling mint now")
+
+	if len(senders) > 1 {
+		log.Error().Msgf("cannot process mint transaction, multiple senders found, refunding now")
+		for sender, depositAmount := range senders {
+			return bridge.refund(context.Background(), sender, depositAmount.Int64(), tx)
+		}
+	}
+
+	var receiver string
+	var depositedAmount *big.Int
+	for receiv, amount := range senders {
+		receiver = receiv
+		depositedAmount = amount
+	}
+
 	// TODO check if we already minted for this txid
 	minted, err := bridge.subClient.IsMintedAlready(&bridge.identity, tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
