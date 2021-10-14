@@ -561,8 +561,6 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca/go.mod h1:u2MKkTVTVJWe5D1rCvame8WqhBd88EuIwODJZ1VHCPM=
 github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954/go.mod h1:u2MKkTVTVJWe5D1rCvame8WqhBd88EuIwODJZ1VHCPM=
-github.com/threefoldtech/substrate-client v0.0.0-20211007134519-74137b8f68ec h1:dGqu3OQmNJS/ikcGIMPGUBrizO0YeSsXxzNEjjx3Hhg=
-github.com/threefoldtech/substrate-client v0.0.0-20211007134519-74137b8f68ec/go.mod h1:t/85gAaltVbJmUnCVwu5lpNKn0HLn9Z9vu/NFJlJcrk=
 github.com/threefoldtech/substrate-client v0.0.0-20211012091516-a95c7817db5c h1:cjfmFfg29p29ZP9nHv1SxsNXmBqpXEW2nMWLLphXoRc=
 github.com/threefoldtech/substrate-client v0.0.0-20211012091516-a95c7817db5c/go.mod h1:t/85gAaltVbJmUnCVwu5lpNKn0HLn9Z9vu/NFJlJcrk=
 github.com/threefoldtech/substrate-client v0.0.0-20211013082909-7a2a542d1274 h1:uj4+eEx5RpzcDC0fWE74qTWz9DAn5G6bMQOrMFLNpQI=
