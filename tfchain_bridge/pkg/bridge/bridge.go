@@ -466,19 +466,14 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 		return nil, errors.New("tx burned already")
 	}
 
-	stellarAddress, err := getStellarAddressFromSubstrateAccountID(burnCreatedEvent.Target)
-	if err != nil {
-		return nil, err
-	}
-
 	amount := big.NewInt(int64(burnCreatedEvent.Amount))
-	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, string(burnCreatedEvent.Target), amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
 	if err != nil {
 		return nil, err
 	}
 	log.Info().Msgf("seq number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent subpkg.BurnTransactionReady) (*types.Call, error) {
@@ -503,13 +498,8 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return nil, errors.New("no signatures")
 	}
 
-	stellarAddress, err := getStellarAddressFromSubstrateAccountID(substrate.AccountID(burnTx.Target))
-	if err != nil {
-		return nil, err
-	}
-
 	// todo add memo hash
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, burnTx.Target, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
 	if err != nil {
 		return nil, err
 	}
@@ -587,10 +577,6 @@ func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {
 	default:
 		return "", errors.New("grid type not supported")
 	}
-}
-
-func getStellarAddressFromSubstrateAccountID(accountID substrate.AccountID) (string, error) {
-	return strkey.Encode(strkey.VersionByteAccountID, accountID.PublicKey())
 }
 
 func (bridge *Bridge) Close() error {
