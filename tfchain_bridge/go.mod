@@ -57,5 +57,3 @@ require (
 	github.com/threefoldtech/substrate-client v0.0.0-20211013151807-f7a8a2c306a6 // indirect
 	golang.org/x/crypto v0.0.0-20210920023735-84f357641f63 // indirect
 )
-
-replace github.com/threefoldtech/substrate-client => /home/dylan/Projects/substrate-client
