@@ -77,7 +77,8 @@ decl_storage! {
     trait Store for Module<T: Config> as TFTPriceModule {
         // Token price
         pub TftPrice: U16F16;
-        pub LastBlockSet: T::BlockNumber;
+        LastBlockSet: T::BlockNumber;
+        LastBlockAvgSet: T::BlockNumber;
         pub AverageTftPrice: U16F16;
         pub TftPriceHistory get(fn get_value): map hasher(twox_64_concat) BufferIndex => ValueStruct;
         BufferRange get(fn range): (BufferIndex, BufferIndex) = (0, 0);
@@ -128,17 +129,16 @@ struct PriceInfo {
 
 impl<T: Config> Module<T> {
     fn calculate_and_set_price(price: U16F16, block_number: T::BlockNumber) -> DispatchResult {
-        let last_block_set: T::BlockNumber = LastBlockSet::<T>::get();
-
-        // Store the average every 10 minutes
-        if block_number.saturated_into::<u64>() - last_block_set.saturated_into::<u64>() < 100 {
-            return Ok(());
-        }
         TftPrice::put(price);
+        LastBlockSet::<T>::put(block_number);
         debug::info!("price {:?}", price);
 
+        let last_block_avg_set: T::BlockNumber = LastBlockAvgSet::<T>::get();
+        // Store the average every 10 minutes
+        if block_number.saturated_into::<u64>() - last_block_avg_set.saturated_into::<u64>() < 100 {
+            return Ok(());
+        }
         debug::info!("storing average now");
-
         let mut queue = Self::queue_transient();
         queue.push(ValueStruct { value: price });
         let average = Self::calc_avg();
@@ -147,7 +147,7 @@ impl<T: Config> Module<T> {
         AverageTftPrice::put(average);
 
         // update last block set
-        LastBlockSet::<T>::put(block_number);
+        LastBlockAvgSet::<T>::put(block_number);
 
         Ok(())
     }
@@ -188,6 +188,11 @@ impl<T: Config> Module<T> {
     }
 
     fn offchain_signed_tx(block_number: T::BlockNumber) -> Result<(), Error<T>> {
+        let last_block_set: T::BlockNumber = LastBlockSet::<T>::get();
+        // Fetch the price every 1 minutes
+        if block_number.saturated_into::<u64>() - last_block_set.saturated_into::<u64>() < 10 {
+            return Ok(());
+        }
         let price = match Self::fetch_price() {
             Ok(v) => v,
             Err(_) => return Err(<Error<T>>::OffchainSignedTxError),
