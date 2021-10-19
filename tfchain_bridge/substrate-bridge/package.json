@@ -44,6 +44,6 @@
     ]
   },
   "react-dotenv": {
-    "whitelist": ["STELLAR_HORIZON_URL", "TFT_ASSET_ISSUER", "BRIDGE_TFT_ADDRESS"]
+    "whitelist": ["STELLAR_HORIZON_URL", "TFT_ASSET_ISSUER", "BRIDGE_TFT_ADDRESS", "API_URL"]
   }
 }

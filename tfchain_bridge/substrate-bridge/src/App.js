@@ -8,9 +8,10 @@ import {
   web3FromAddress,
 } from '@polkadot/extension-dapp';
 import { connect } from './connect'
+import { Button } from '@material-ui/core'
 import { Withdraw } from './components/withdraw'
 import { Balance } from './components/balance'
-import { Button } from '@material-ui/core'
+import { Spinner } from './components/spinner'
 
 function App() {
   const [api, setApi] = useState()
@@ -22,19 +23,27 @@ function App() {
   const handleCloseWithdrawDialog = () => setOpenWithdrawDialog(false)
 
   useEffect(() => {
+    console.log('effect triggered')
     connect()
       .then(api => {
         setApi(api)
-        web3Enable('TF Chain Bridge UI')
-        web3Accounts().then(accounts => {
-          console.log(accounts)
-          setAccount(accounts[0])
-          getBalance(accounts[0])
+        web3Enable('TF Chain Bridge UI').then(() => {
+          web3Accounts().then(accounts => {
+            console.log(accounts)
+            setAccount(accounts[0])
+          })
         })
       })
   }, [])
 
-  const getBalance = (account) => {
+  useEffect(() => {
+    if (api && account) {
+      getBalance()
+    }
+  }, [api, account])
+
+  const getBalance = () => {
+    console.log('get balance triggered')
     api.query.system.account(account.address)
       .then(balance => {
         console.log(balance.data.free.toJSON())
@@ -63,9 +72,14 @@ function App() {
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
         <Balance balance={balance} />
-        <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center' }} color='default' variant='outlined' onClick={() => setOpenWithdrawDialog(true)}>
+        <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center', backgroundColor: 'white' }} color='default' variant='outlined' onClick={() => setOpenWithdrawDialog(true)}>
           Withdraw to Stellar
         </Button>
+        <div>
+          {loadingWithdrawal && (
+            <Spinner color={'black'} style={{ height: '25%', marginLeft: '-1rem' }} />
+          )}
+        </div>
         <Withdraw
           open={openWithdrawDialog}
           handleClose={handleCloseWithdrawDialog}

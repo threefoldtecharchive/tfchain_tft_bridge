@@ -1,8 +1,11 @@
+import env from "react-dotenv"
 const { ApiPromise, WsProvider } = require('@polkadot/api');
+
+const API_URL = env.API_URL
 
 export async function connect () {
   // Initialise the provider to connect to the local node
-  const provider = new WsProvider('wss://tfchain.dev.threefold.io');
+  const provider = new WsProvider(API_URL);
 
   // Create the API and wait until ready
   const api = await ApiPromise.create({ provider });
