@@ -3,7 +3,6 @@ package substrate
 import (
 	"github.com/centrifuge/go-substrate-rpc-client/v3/rpc/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
-	"github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
 
@@ -13,7 +12,7 @@ import (
 type BurnTransactionCreated struct {
 	Phase             types.Phase
 	BurnTransactionID types.U64
-	Target            substrate.AccountID
+	Target            []byte
 	Amount            types.U64
 	Topics            []types.Hash
 }
@@ -34,7 +33,7 @@ type BurnTransactionSignatureAdded struct {
 type BurnTransactionProposed struct {
 	Phase             types.Phase
 	BurnTransactionID types.U64
-	Target            substrate.AccountID
+	Target            []byte
 	Amount            types.U64
 	Topics            []types.Hash
 }

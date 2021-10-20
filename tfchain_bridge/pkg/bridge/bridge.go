@@ -290,8 +290,23 @@ func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKe
 }
 
 // mint handler for stellar
-func (bridge *Bridge) mint(receiver string, depositedAmount *big.Int, tx hProtocol.Transaction) error {
+func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction) error {
 	log.Info().Msg("calling mint now")
+
+	if len(senders) > 1 {
+		log.Error().Msgf("cannot process mint transaction, multiple senders found, refunding now")
+		for sender, depositAmount := range senders {
+			return bridge.refund(context.Background(), sender, depositAmount.Int64(), tx)
+		}
+	}
+
+	var receiver string
+	var depositedAmount *big.Int
+	for receiv, amount := range senders {
+		receiver = receiv
+		depositedAmount = amount
+	}
+
 	// TODO check if we already minted for this txid
 	minted, err := bridge.subClient.IsMintedAlready(&bridge.identity, tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
@@ -451,19 +466,14 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 		return nil, errors.New("tx burned already")
 	}
 
-	stellarAddress, err := getStellarAddressFromSubstrateAccountID(burnCreatedEvent.Target)
-	if err != nil {
-		return nil, err
-	}
-
 	amount := big.NewInt(int64(burnCreatedEvent.Amount))
-	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, stellarAddress, amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, string(burnCreatedEvent.Target), amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
 	if err != nil {
 		return nil, err
 	}
 	log.Info().Msgf("seq number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), substrate.AccountID(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent subpkg.BurnTransactionReady) (*types.Call, error) {
@@ -488,13 +498,8 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return nil, errors.New("no signatures")
 	}
 
-	stellarAddress, err := getStellarAddressFromSubstrateAccountID(substrate.AccountID(burnTx.Target))
-	if err != nil {
-		return nil, err
-	}
-
 	// todo add memo hash
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, stellarAddress, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, burnTx.Target, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
 	if err != nil {
 		return nil, err
 	}
@@ -572,10 +577,6 @@ func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {
 	default:
 		return "", errors.New("grid type not supported")
 	}
-}
-
-func getStellarAddressFromSubstrateAccountID(accountID substrate.AccountID) (string, error) {
-	return strkey.Encode(strkey.VersionByteAccountID, accountID.PublicKey())
 }
 
 func (bridge *Bridge) Close() error {

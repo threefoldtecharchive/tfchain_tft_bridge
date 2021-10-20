@@ -287,7 +287,7 @@ func (w *StellarWallet) GetKeypair() *keypair.Full {
 }
 
 // mint handler
-type mint func(string, *big.Int, hProtocol.Transaction) error
+type mint func(map[string]*big.Int, hProtocol.Transaction) error
 
 // // refund handler
 // type refund func(context.Context, string, int64, string) error
@@ -353,20 +353,17 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 					senderAmount = senderAmount.Add(senderAmount, depositedAmount)
 					senders[paymentOpation.From] = senderAmount
 				}
-
 			}
 
-			for sender, amount := range senders {
-				err = mintFn(sender, amount, tx)
-				for err != nil {
-					log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
+			err = mintFn(senders, tx)
+			for err != nil {
+				log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
 
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(10 * time.Second):
-						err = mintFn(tx.Account, amount, tx)
-					}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Second):
+					err = mintFn(senders, tx)
 				}
 			}
 

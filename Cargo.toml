@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "pallet-tft-bridge",
+    "pallet-tft-price",
+]
