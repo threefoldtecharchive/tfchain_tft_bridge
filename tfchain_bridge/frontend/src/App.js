@@ -10,6 +10,7 @@ import {
 import { connect } from './connect'
 import { Button } from '@material-ui/core'
 import { Withdraw } from './components/withdraw'
+import { Deposit } from './components/deposit'
 import { Balance } from './components/balance'
 import { Spinner } from './components/spinner'
 import { useSnackbar } from 'notistack'
@@ -21,6 +22,9 @@ function App() {
 
   const [openWithdrawDialog, setOpenWithdrawDialog] = useState(false)
   const [loadingWithdrawal, setLoadingWithdrawal] = useState(false)
+  const [openDepositDialog, setOpenDepositDialog] = useState(false)
+
+  const handleCloseDespoitDialog = () => setOpenDepositDialog(false)
   const handleCloseWithdrawDialog = () => setOpenWithdrawDialog(false)
 
   const { enqueueSnackbar } = useSnackbar()
@@ -102,15 +106,24 @@ function App() {
         {loadingWithdrawal ? (
           <Spinner color={'black'} style={{ height: '25%', marginLeft: '-1rem' }} />
         ): (
-          <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center', backgroundColor: 'white' }} color='default' variant='outlined' onClick={() => setOpenWithdrawDialog(true)}>
-            Withdraw to Stellar
-          </Button>
+          <>
+            <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center', backgroundColor: 'white' }} color='default' variant='outlined' onClick={() => setOpenWithdrawDialog(true)}>
+              Withdraw to Stellar
+            </Button>
+            <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center' }} color='primary' variant='contained' onClick={() => setOpenDepositDialog(true)}>
+              Deposit from Stellar
+            </Button>
+          </>
         )}
         <Withdraw
           open={openWithdrawDialog}
           handleClose={handleCloseWithdrawDialog}
           balance={balance}
           submitWithdraw={transfer}
+        />
+        <Deposit 
+          open={openDepositDialog}
+          handleClose={handleCloseDespoitDialog}
         />
       </header>
     </div>
