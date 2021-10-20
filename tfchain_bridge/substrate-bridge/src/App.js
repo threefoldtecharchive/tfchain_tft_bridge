@@ -12,6 +12,7 @@ import { Button } from '@material-ui/core'
 import { Withdraw } from './components/withdraw'
 import { Balance } from './components/balance'
 import { Spinner } from './components/spinner'
+import { useSnackbar } from 'notistack'
 
 function App() {
   const [api, setApi] = useState()
@@ -22,6 +23,8 @@ function App() {
   const [loadingWithdrawal, setLoadingWithdrawal] = useState(false)
   const handleCloseWithdrawDialog = () => setOpenWithdrawDialog(false)
 
+  const { enqueueSnackbar } = useSnackbar()
+
   useEffect(() => {
     console.log('effect triggered')
     connect()
@@ -30,17 +33,12 @@ function App() {
         web3Enable('TF Chain Bridge UI').then(() => {
           web3Accounts().then(accounts => {
             console.log(accounts)
+            enqueueSnackbar('Connection successfull')
             setAccount(accounts[0])
           })
         })
       })
-  }, [])
-
-  useEffect(() => {
-    if (api && account) {
-      getBalance()
-    }
-  }, [api, account])
+  }, [enqueueSnackbar])
 
   const getBalance = () => {
     console.log('get balance triggered')
@@ -51,6 +49,12 @@ function App() {
       })
   }
 
+  useEffect(() => {
+    if (api && account) {
+      getBalance()
+    }
+  }, [api, account])
+
   const transfer = (stellarAddress, amount) => {
     setLoadingWithdrawal(true)
     handleCloseWithdrawDialog()
@@ -59,10 +63,33 @@ function App() {
       .then(injector => {
         api.tx.tftBridgeModule
           .swapToStellar(stellarAddress, amount*1e7)
-          .signAndSend(account.address, { signer: injector.signer }, (status) => {
-            console.log(status)
-            setLoadingWithdrawal(false)
-            getBalance(account)
+          .signAndSend(account.address, { signer: injector.signer }, (res) => {
+            console.log(res)
+            if (res instanceof Error) {
+              console.log(res)
+              setLoadingWithdrawal(false)
+              return
+            }
+            const { events = [], status } = res
+            console.log(`Current status is ${status.type}`)
+          
+            if (status.isFinalized) {
+              console.log(`Transaction included at blockHash ${status.asFinalized}`)
+          
+              // Loop through Vec<EventRecord> to display all events
+              events.forEach(({ phase, event: { data, method, section } }) => {
+                console.log(`\t' ${phase}: ${section}.${method}:: ${data}`)
+                if (section === 'tftBridgeModule' && method === 'BurnTransactionCreated') {
+                  setLoadingWithdrawal(false)
+                  getBalance(account)
+                  enqueueSnackbar('Withdraw successfull')
+                } else if (section === 'system' && method === 'ExtrinsicFailed') {
+                  setLoadingWithdrawal(false)
+                  getBalance(account)
+                  enqueueSnackbar('Withdraw failed!')
+                }
+              })
+            }
           })
       })
   }
@@ -72,14 +99,13 @@ function App() {
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
         <Balance balance={balance} />
-        <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center', backgroundColor: 'white' }} color='default' variant='outlined' onClick={() => setOpenWithdrawDialog(true)}>
-          Withdraw to Stellar
-        </Button>
-        <div>
-          {loadingWithdrawal && (
-            <Spinner color={'black'} style={{ height: '25%', marginLeft: '-1rem' }} />
-          )}
-        </div>
+        {loadingWithdrawal ? (
+          <Spinner color={'black'} style={{ height: '25%', marginLeft: '-1rem' }} />
+        ): (
+          <Button style={{ width: '50%', marginTop: 20, alignSelf: 'center', backgroundColor: 'white' }} color='default' variant='outlined' onClick={() => setOpenWithdrawDialog(true)}>
+            Withdraw to Stellar
+          </Button>
+        )}
         <Withdraw
           open={openWithdrawDialog}
           handleClose={handleCloseWithdrawDialog}
