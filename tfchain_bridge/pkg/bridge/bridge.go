@@ -16,6 +16,7 @@ import (
 	hProtocol "github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/strkey"
 	"github.com/threefoldtech/substrate-client"
+	subclient "github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 	"github.com/threefoldtech/tfchain_bridge/pkg/stellar"
 	subpkg "github.com/threefoldtech/tfchain_bridge/pkg/substrate"
@@ -217,7 +218,7 @@ func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKe
 			}
 
 			// Decode the event records
-			events := subpkg.EventRecords{}
+			events := subclient.EventRecords{}
 			err = types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(meta, &events)
 			if err != nil {
 				log.Err(err)
@@ -430,7 +431,7 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 	return bridge.subClient.CreateRefundTransactionOrAddSig(&bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent subpkg.RefundTransactionReady) (*types.Call, error) {
+func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent subclient.RefundTransactionReady) (*types.Call, error) {
 	refunded, err := bridge.subClient.IsRefundedAlready(&bridge.identity, string(refundReadyEvent.RefundTransactionHash))
 	if err != nil {
 		return nil, err
@@ -454,7 +455,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 	return bridge.subClient.SetRefundTransactionExecuted(&bridge.identity, refund.TxHash)
 }
 
-func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent subpkg.BurnTransactionCreated) (*types.Call, error) {
+func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent subclient.BridgeBurnTransactionCreated) (*types.Call, error) {
 	log.Info().Msg("going to propose burn transaction")
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
@@ -476,7 +477,7 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 	return bridge.subClient.ProposeBurnTransactionOrAddSig(&bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent subpkg.BurnTransactionReady) (*types.Call, error) {
+func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent subclient.BurnTransactionReady) (*types.Call, error) {
 	burned, err := bridge.subClient.IsBurnedAlready(&bridge.identity, burnReadyEvent.BurnTransactionID)
 
 	if err != nil {
