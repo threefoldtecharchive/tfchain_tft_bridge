@@ -1,0 +1,6 @@
+apiVersion: v2
+name: tfchainbridgeui
+description: A Helm chart tfchain bridge frontend
+type: application
+version: 0.1.1
+appVersion: "0.1.0-b2"
