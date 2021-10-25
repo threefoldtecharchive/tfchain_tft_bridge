@@ -165,28 +165,39 @@ impl<T: Config> Module<T> {
         let pending = request
             .deadline(deadline)
             .send()
-            .map_err(|_| http::Error::IoError)?;
+            .map_err(|_| {
+                debug::error!("IO error");
+                http::Error::IoError
+            })?;
 
         let response = pending
             .try_wait(deadline)
-            .map_err(|_| http::Error::DeadlineReached)??;
+            .map_err(|_| {
+                debug::error!("Deadline reached");
+                http::Error::DeadlineReached
+            })??;
 
         // Let's check the status code before we proceed to reading the response.
         if response.code != 200 {
-            debug::warn!("Unexpected status code: {}", response.code);
+            debug::error!("Unexpected status code: {}", response.code);
             return Err(http::Error::Unknown);
         }
 
         let body = response.body().collect::<Vec<u8>>();
+        debug::info!("resp body: {:?}", body);
 
         // Create a str slice from the body.
         let body_str = sp_std::str::from_utf8(&body).map_err(|_| {
-            debug::warn!("No UTF8 body");
+            debug::error!("No UTF8 body");
             http::Error::Unknown
         })?;
 
         let price_info: PriceInfo =
-            serde_json::from_str(&body_str).map_err(|_| http::Error::Unknown)?;
+            serde_json::from_str(&body_str).map_err(|_| {
+                debug::error!("Error while decoding");
+                http::Error::Unknown
+            })?;
+
         Ok(price_info.price)
     }
 
