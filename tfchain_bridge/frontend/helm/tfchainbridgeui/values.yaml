@@ -53,7 +53,7 @@ url:
 #stellar_horizon_url: https://horizon-testnet.stellar.org
 
 # main url (mainnet & test tft)
-#stellar_horizon_url: https://horizon-testnet.stellar.org
+#stellar_horizon_url: https://horizon.stellar.org
 
 stellar_horizon_url:
 
