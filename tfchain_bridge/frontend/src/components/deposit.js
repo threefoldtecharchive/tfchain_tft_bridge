@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { Button, Checkbox, FormControlLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@material-ui/core'
 import WarningIcon from '@material-ui/icons/Warning'
-import env from "react-dotenv"
+import config from '../config'
 
-const BRIDGE_TFT_ADDRESS = env.BRIDGE_TFT_ADDRESS
+const { REACT_APP_BRIDGE_TFT_ADDRESS } = config
 
 export function Deposit({ open, handleClose }) {
   const [checked, setChecked] = useState(false)
@@ -45,7 +45,7 @@ export function Deposit({ open, handleClose }) {
 
                 </span>
                 To deposit to a TF Grid object, this object **must** exists. If the object is not found on chain, a refund is issued.
-                <span style={{ marginTop: 20 }}>Destination Stellar Address: <b>{BRIDGE_TFT_ADDRESS}</b></span>
+                <span style={{ marginTop: 20 }}>Destination Stellar Address: <b>{REACT_APP_BRIDGE_TFT_ADDRESS}</b></span>
                 <span><b>Memo text: "object_objectID"</b></span>
               </DialogContentText>
             </>

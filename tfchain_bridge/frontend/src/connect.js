@@ -1,11 +1,11 @@
-import env from "react-dotenv"
+import config from './config'
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 
-const API_URL = env.API_URL
+const { REACT_APP_API_URL } = config
 
 export async function connect () {
   // Initialise the provider to connect to the local node
-  const provider = new WsProvider(API_URL);
+  const provider = new WsProvider(REACT_APP_API_URL);
 
   // Create the API and wait until ready
   const api = await ApiPromise.create({ provider });

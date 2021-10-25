@@ -3,13 +3,17 @@ import { FormControl, InputLabel, Input, FormHelperText, Button, Dialog } from '
 import DialogActions from '@material-ui/core/DialogActions'
 import DialogTitle from '@material-ui/core/DialogTitle'
 import stellar from 'stellar-sdk'
-import env from "react-dotenv"
+
+import config from '../config'
+
+const { 
+  REACT_APP_STELLAR_HORIZON_URL,
+  REACT_APP_TFT_ASSET_ISSUER,
+  REACT_APP_BRIDGE_TFT_ADDRESS
+} = config
 
 const TFT_ASSET = 'TFT'
-const STELLAR_HORIZON_URL = env.STELLAR_HORIZON_URL
-const TFT_ASSET_ISSUER = env.TFT_ASSET_ISSUER
-const BRIDGE_TFT_ADDRESS = env.BRIDGE_TFT_ADDRESS
-const server = new stellar.Server(STELLAR_HORIZON_URL)
+const server = new stellar.Server(REACT_APP_STELLAR_HORIZON_URL)
 
 export function Withdraw({ open, handleClose, balance, submitWithdraw }) {
   const [stellarAddress, setStellarAddress] = useState('')
@@ -31,7 +35,7 @@ export function Withdraw({ open, handleClose, balance, submitWithdraw }) {
       return
     }
 
-    if (stellarAddress === BRIDGE_TFT_ADDRESS) {
+    if (stellarAddress === REACT_APP_BRIDGE_TFT_ADDRESS) {
       setStellarAddressError('Cannot withdraw to bridge account, use your personal wallet address')
       return
     }
@@ -40,7 +44,7 @@ export function Withdraw({ open, handleClose, balance, submitWithdraw }) {
       // check if the account provided exists on stellar
       const account = await server.loadAccount(stellarAddress)
       // check if the account provided has the appropriate trustlines
-      const includes = account.balances.find(b => b.asset_code === TFT_ASSET && b.asset_issuer === TFT_ASSET_ISSUER)
+      const includes = account.balances.find(b => b.asset_code === TFT_ASSET && b.asset_issuer === REACT_APP_TFT_ASSET_ISSUER)
       if (!includes) {
         setStellarAddressError('Address does not have a valid trustline to TFT')
         return
