@@ -87,12 +87,14 @@ decl_storage! {
 
 decl_event! {
     pub enum Event<T> where AccountId = <T as frame_system::Config>::AccountId {
-        PriceStored(U16F16, AccountId),
+        PriceStored(U16F16),
+        OffchainWorkerExecuted(AccountId),
     }
 }
 
 decl_error! {
     pub enum Error for Module<T: Config> {
+        ErrFetchingPrice,
         OffchainSignedTxError,
         NoLocalAcctForSigning
     }
@@ -131,6 +133,7 @@ impl<T: Config> Module<T> {
     fn calculate_and_set_price(price: U16F16, block_number: T::BlockNumber) -> DispatchResult {
         TftPrice::put(price);
         LastBlockSet::<T>::put(block_number);
+        Self::deposit_event(RawEvent::PriceStored(price));
         debug::info!("price {:?}", price);
 
         let last_block_avg_set: T::BlockNumber = LastBlockAvgSet::<T>::get();
@@ -195,7 +198,10 @@ impl<T: Config> Module<T> {
         }
         let price = match Self::fetch_price() {
             Ok(v) => v,
-            Err(_) => return Err(<Error<T>>::OffchainSignedTxError),
+            Err(err) => {
+                debug::error!("err while fetching price: {:?}", err);
+                return Err(<Error<T>>::ErrFetchingPrice)
+            },
         };
 
         let price_to_fixed = U16F16::from_num(price);
