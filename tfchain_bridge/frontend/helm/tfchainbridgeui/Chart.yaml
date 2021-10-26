@@ -3,4 +3,4 @@ name: tfchainbridgeui
 description: A Helm chart tfchain bridge frontend
 type: application
 version: 0.1.2
-appVersion: "0.1.0-b8"
+appVersion: "0.1.0-b9"
