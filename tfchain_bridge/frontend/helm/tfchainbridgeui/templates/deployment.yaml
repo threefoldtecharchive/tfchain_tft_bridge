@@ -30,13 +30,13 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-          - name: API_URL
+          - name: REACT_APP_API_URL
             value: {{ .Values.url }}
-          - name: STELLAR_HORIZON_URL
+          - name: REACT_APP_STELLAR_HORIZON_URL
             value: {{ .Values.stellar_horizon_url }}
-          - name: TFT_ASSET_ISSUER
+          - name: REACT_APP_TFT_ASSET_ISSUER
             value: {{ .Values.tft_asset_issuer }}
-          - name: BRIDGE_TFT_ADDRESS
+          - name: REACT_APP_BRIDGE_TFT_ADDRESS
             value: {{ .Values.stellar_bridge_address }}
           ports:
             - name: http

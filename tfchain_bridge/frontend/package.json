@@ -43,13 +43,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "react-dotenv": {
-    "whitelist": [
-      "REACT_APP_API_URL",
-      "REACT_APP_STELLAR_HORIZON_URL",
-      "REACT_APP_TFT_ASSET_ISSUER",
-      "REACT_APP_BRIDGE_TFT_ADDRESS"
-    ]
   }
 }
