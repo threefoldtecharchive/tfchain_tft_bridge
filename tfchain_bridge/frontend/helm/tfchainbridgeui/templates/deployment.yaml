@@ -40,7 +40,7 @@ spec:
             value: {{ .Values.stellar_bridge_address }}
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: 80
               protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
