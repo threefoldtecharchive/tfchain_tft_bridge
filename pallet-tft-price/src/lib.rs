@@ -184,7 +184,6 @@ impl<T: Config> Module<T> {
         }
 
         let body = response.body().collect::<Vec<u8>>();
-        debug::info!("resp body: {:?}", body);
 
         // Create a str slice from the body.
         let body_str = sp_std::str::from_utf8(&body).map_err(|_| {
