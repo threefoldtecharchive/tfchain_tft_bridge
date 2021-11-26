@@ -308,6 +308,11 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		depositedAmount = amount
 	}
 
+	if tx.Memo == "" {
+		log.Error().Msgf("transaction with hash %s has empty memo, refunding now", tx.Hash)
+		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
+	}
+
 	// TODO check if we already minted for this txid
 	minted, err := bridge.subClient.IsMintedAlready(&bridge.identity, tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
@@ -324,26 +329,11 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
 
-	var destinationSubstrateAddress string
-
-	substrateAddressBytes, err := getSubstrateAddressFromStellarAddress(receiver)
+	destinationSubstrateAddress, err := bridge.getSubstrateAddressFromMemo(tx.Memo)
 	if err != nil {
-		return err
-	}
-	destinationSubstrateAddress, err = substrate.FromEd25519Bytes(substrateAddressBytes)
-	if err != nil {
-		return err
-	}
-
-	// if there is a memo try to infer the destination address from it
-	if tx.Memo != "" {
-		destinationSubstrateAddress, err = bridge.getSubstrateAddressFromMemo(tx.Memo)
-		if err != nil {
-			log.Info().Msgf("error while decoding tx memo, %s", err.Error())
-			// memo is not formatted correctly, issue a refund
-			return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
-		}
-
+		log.Info().Msgf("error while decoding tx memo, %s", err.Error())
+		// memo is not formatted correctly, issue a refund
+		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
 
 	log.Info().Int64("amount", depositedAmount.Int64()).Str("tx_id", tx.Hash).Msgf("target substrate address to mint on: %s", destinationSubstrateAddress)
