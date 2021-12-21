@@ -1,15 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! A Pallet to demonstrate using currency imbalances
-//!
-//! WARNING: never use this code in production (for demonstration/teaching purposes only)
-//! it only checks for signed extrinsics to enable arbitrary minting/slashing!!!
-
 use frame_support::{
 	decl_event, decl_module, decl_storage, decl_error, ensure, debug,
-	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec},
+	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec, EnsureOrigin},
 };
-use frame_system::{self as system, ensure_signed, ensure_root, RawOrigin};
+use frame_system::{self as system, ensure_signed, RawOrigin};
 use sp_runtime::{DispatchResult, DispatchError};
 use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
@@ -33,6 +28,9 @@ pub trait Config: system::Config {
 
 	/// Handler for the unbalanced decrement when slashing (burning collateral)
 	type Burn: OnUnbalanced<NegativeImbalanceOf<Self>>;
+
+	/// Origin for sudo extrinsics
+	type CouncilOrigin: EnsureOrigin<Self::Origin>;
 }
 
 decl_event!(
@@ -179,31 +177,31 @@ decl_module! {
 		
 		#[weight = 10_000]
 		fn add_bridge_validator(origin, target: T::AccountId){
-            ensure_root(origin)?;
+            T::CouncilOrigin::ensure_origin(origin)?;
             Self::add_validator_account(target)?;
 		}
 		
 		#[weight = 10_000]
 		fn remove_bridge_validator(origin, target: T::AccountId){
-            ensure_root(origin)?;
+            T::CouncilOrigin::ensure_origin(origin)?;
             Self::remove_validator_account(target)?;
 		}
 
 		#[weight = 10_000]
 		fn set_fee_account(origin, target: T::AccountId) {
-			ensure_root(origin)?;
+			T::CouncilOrigin::ensure_origin(origin)?;
 			FeeAccount::<T>::set(target);
 		}
 
 		#[weight = 10_000]
 		fn set_burn_fee(origin, amount: u64) {
-			ensure_root(origin)?;
+			T::CouncilOrigin::ensure_origin(origin)?;
 			BurnFee::set(amount);
 		}
 
 		#[weight = 10_000]
 		fn set_deposit_fee(origin, amount: u64) {
-			ensure_root(origin)?;
+			T::CouncilOrigin::ensure_origin(origin)?;
 			DepositFee::set(amount);
 		}
 
