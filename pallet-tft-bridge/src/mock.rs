@@ -91,7 +91,7 @@ impl Config for TestRuntime {
 	type Event = Event;
 	type Currency = Balances;
     type Burn = ();
-	type CouncilOrigin = EnsureRoot<Self::AccountId>;
+	type ExternalOrigin = EnsureRoot<Self::AccountId>;
 }
 
 type AccountPublic = <MultiSignature as Verify>::Signer;
