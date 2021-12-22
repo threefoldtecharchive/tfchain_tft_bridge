@@ -30,9 +30,9 @@ pub trait Config: system::Config {
 	/// Handler for the unbalanced decrement when slashing (burning collateral)
 	type Burn: OnUnbalanced<NegativeImbalanceOf<Self>>;
 
-	/// Origin for signing important extrinsics
-	/// Can be the root of another origin configured in the runtime
-	type ExternalOrigin: EnsureOrigin<Self::Origin>;
+	/// Origin for restricted extrinsics
+	/// Can be the root or another origin configured in the runtime
+	type RestrictedOrigin: EnsureOrigin<Self::Origin>;
 }
 
 decl_event!(
@@ -178,30 +178,30 @@ decl_module! {
 		fn deposit_event() = default;
 		#[weight = 10_000]
 		fn add_bridge_validator(origin, target: T::AccountId){
-            T::ExternalOrigin::ensure_origin(origin)?;
+            T::RestrictedOrigin::ensure_origin(origin)?;
             Self::add_validator_account(target)?;
 		}
 		#[weight = 10_000]
 		fn remove_bridge_validator(origin, target: T::AccountId){
-            T::ExternalOrigin::ensure_origin(origin)?;
+            T::RestrictedOrigin::ensure_origin(origin)?;
             Self::remove_validator_account(target)?;
 		}
 
 		#[weight = 10_000]
 		fn set_fee_account(origin, target: T::AccountId) {
-			T::ExternalOrigin::ensure_origin(origin)?;
+			T::RestrictedOrigin::ensure_origin(origin)?;
 			FeeAccount::<T>::set(target);
 		}
 
 		#[weight = 10_000]
 		fn set_withdraw_fee(origin, amount: u64) {
-			T::ExternalOrigin::ensure_origin(origin)?;
+			T::RestrictedOrigin::ensure_origin(origin)?;
 			WithdrawFee::set(amount);
 		}
 
 		#[weight = 10_000]
 		fn set_deposit_fee(origin, amount: u64) {
-			T::ExternalOrigin::ensure_origin(origin)?;
+			T::RestrictedOrigin::ensure_origin(origin)?;
 			DepositFee::set(amount);
 		}
 
