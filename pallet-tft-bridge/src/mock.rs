@@ -13,6 +13,8 @@ use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{
 	MultiSignature,
 };
+use frame_system::EnsureRoot;
+
 use pallet_balances;
 
 pub type Signature = MultiSignature;
@@ -89,6 +91,7 @@ impl Config for TestRuntime {
 	type Event = Event;
 	type Currency = Balances;
     type Burn = ();
+	type RestrictedOrigin = EnsureRoot<Self::AccountId>;
 }
 
 type AccountPublic = <MultiSignature as Verify>::Signer;

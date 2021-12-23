@@ -1,18 +1,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-//! A Pallet to demonstrate using currency imbalances
-//!
-//! WARNING: never use this code in production (for demonstration/teaching purposes only)
-//! it only checks for signed extrinsics to enable arbitrary minting/slashing!!!
-
-use codec::{Decode, Encode};
 use frame_support::{
-	debug, decl_error, decl_event, decl_module, decl_storage, ensure,
-	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec},
+	decl_event, decl_module, decl_storage, decl_error, ensure, debug,
+	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec, EnsureOrigin},
 };
-use frame_system::{self as system, ensure_root, ensure_signed, RawOrigin};
+use frame_system::{self as system, ensure_signed, RawOrigin};
+use sp_runtime::{DispatchResult, DispatchError};
+use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
-use sp_runtime::{DispatchError, DispatchResult};
 
 #[cfg(test)]
 mod tests;
@@ -34,6 +29,10 @@ pub trait Config: system::Config {
 
 	/// Handler for the unbalanced decrement when slashing (burning collateral)
 	type Burn: OnUnbalanced<NegativeImbalanceOf<Self>>;
+
+	/// Origin for restricted extrinsics
+	/// Can be the root or another origin configured in the runtime
+	type RestrictedOrigin: EnsureOrigin<Self::Origin>;
 }
 
 decl_event!(
@@ -179,30 +178,30 @@ decl_module! {
 		fn deposit_event() = default;
 		#[weight = 10_000]
 		fn add_bridge_validator(origin, target: T::AccountId){
-			ensure_root(origin)?;
-			Self::add_validator_account(target)?;
+            T::RestrictedOrigin::ensure_origin(origin)?;
+            Self::add_validator_account(target)?;
 		}
 		#[weight = 10_000]
 		fn remove_bridge_validator(origin, target: T::AccountId){
-			ensure_root(origin)?;
-			Self::remove_validator_account(target)?;
+            T::RestrictedOrigin::ensure_origin(origin)?;
+            Self::remove_validator_account(target)?;
 		}
 
 		#[weight = 10_000]
 		fn set_fee_account(origin, target: T::AccountId) {
-			ensure_root(origin)?;
+			T::RestrictedOrigin::ensure_origin(origin)?;
 			FeeAccount::<T>::set(target);
 		}
 
 		#[weight = 10_000]
 		fn set_withdraw_fee(origin, amount: u64) {
-			ensure_root(origin)?;
+			T::RestrictedOrigin::ensure_origin(origin)?;
 			WithdrawFee::set(amount);
 		}
 
 		#[weight = 10_000]
 		fn set_deposit_fee(origin, amount: u64) {
-			ensure_root(origin)?;
+			T::RestrictedOrigin::ensure_origin(origin)?;
 			DepositFee::set(amount);
 		}
 
