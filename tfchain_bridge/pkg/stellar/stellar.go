@@ -31,8 +31,6 @@ const (
 	stellarPrecisionDigits = 7
 )
 
-var errInsufficientDepositAmount = errors.New("deposited amount is <= Fee")
-
 // stellarWallet is the bridge wallet
 // Payments will be funded and fees will be taken with this wallet
 type StellarWallet struct {
@@ -466,6 +464,10 @@ func (w *StellarWallet) getOperationEffect(txHash string) (ops operations.Operat
 
 // GetHorizonClient gets the horizon client based on the wallet's network
 func (w *StellarWallet) GetHorizonClient() (*horizonclient.Client, error) {
+	if w.config.StellarHorizonUrl != "" {
+		return &horizonclient.Client{HorizonURL: w.config.StellarHorizonUrl}, nil
+	}
+
 	switch w.config.StellarNetwork {
 	case "testnet":
 		return horizonclient.DefaultTestNetClient, nil
