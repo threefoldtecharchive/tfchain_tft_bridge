@@ -37,23 +37,18 @@ func main() {
 		panic(err)
 	}
 
-	if err = br.Start(ctx); err != nil {
-		panic(err)
-	}
-
 	sigs := make(chan os.Signal, 1)
 
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Info().Msg("awaiting signal")
-	sig := <-sigs
-	log.Info().Str("signal", sig.String()).Msg("signal")
-	cancel()
-	err = br.Close()
-	if err != nil {
-		panic(err)
-	}
+	go func() {
+		log.Info().Msg("awaiting signal")
+		<-sigs
+		log.Info().Msg("shutting now")
+		cancel()
+	}()
 
-	log.Info().Msg("exiting")
-	time.Sleep(time.Second * 5)
+	if err = br.Start(ctx); err != nil && err != context.Canceled {
+		log.Fatal().Err(err).Msg("exited unexpectedly")
+	}
 }

@@ -31,13 +31,7 @@ type Bridge struct {
 	blockPersistency *pkg.ChainPersistency
 	mut              sync.Mutex
 	config           *pkg.BridgeConfig
-	extrinsicsChan   chan Extrinsic
 	depositFee       int64
-}
-
-type Extrinsic struct {
-	call types.Call
-	err  chan error
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
@@ -103,28 +97,6 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 }
 
 func (bridge *Bridge) Start(ctx context.Context) error {
-	// all extrinsics to be submitted will be pushed to this channel
-	submitExtrinsicChan := make(chan Extrinsic)
-	bridge.extrinsicsChan = submitExtrinsicChan
-
-	go func() {
-		for ext := range bridge.extrinsicsChan {
-			cl, meta, err := bridge.subClient.GetClient()
-			if err != nil {
-				ext.err <- err
-			}
-			log.Info().Msgf("call ready to be submitted")
-			hash, err := bridge.subClient.Substrate.Call(cl, meta, bridge.identity, ext.call)
-			if err != nil {
-				ext.err <- err
-				log.Error().Msgf("error occurred while submitting call %+v", err)
-			}
-			log.Info().Msgf("call submitted, hash=%s", hash.Hex())
-			// close channel
-			close(ext.err)
-		}
-	}()
-
 	height, err := bridge.blockPersistency.GetHeight()
 	if err != nil {
 		return errors.Wrap(err, "failed to get block height from persistency")
@@ -148,27 +120,24 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	}
 
 	log.Info().Msgf("bridge synced, resuming normal operations")
-	go func() {
-		for {
-			select {
-			case head := <-chainHeadsSub.Chan():
-				height, err := bridge.blockPersistency.GetHeight()
-				if err != nil {
-					panic(err)
-				}
-				for i := height.LastHeight + 1; i <= uint32(head.Number); i++ {
-					err := bridge.processEventsForHeight(i)
-					if err != nil {
-						panic(err)
-					}
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 
-	return nil
+	for {
+		select {
+		case head := <-chainHeadsSub.Chan():
+			height, err := bridge.blockPersistency.GetHeight()
+			if err != nil {
+				return err
+			}
+			for i := height.LastHeight + 1; i <= uint32(head.Number); i++ {
+				err := bridge.processEventsForHeight(i)
+				if err != nil {
+					return err
+				}
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (bridge *Bridge) processEventsForHeight(height uint32) error {
@@ -206,9 +175,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 			log.Info().Msgf("error occured: +%s", err.Error())
 			continue
 		}
-		bridge.extrinsicsChan <- Extrinsic{
-			call: *call,
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
 		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
@@ -218,9 +189,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 			log.Info().Msgf("error occured: +%s", err.Error())
 			continue
 		}
-		bridge.extrinsicsChan <- Extrinsic{
-			call: *call,
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
 		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
@@ -230,10 +203,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 			log.Info().Msgf("error occured: +%s", err.Error())
 			continue
 		}
-		fmt.Println(call)
-		bridge.extrinsicsChan <- Extrinsic{
-			call: *call,
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
 		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
@@ -243,9 +217,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 			log.Info().Msgf("error occured: +%s", err.Error())
 			continue
 		}
-		bridge.extrinsicsChan <- Extrinsic{
-			call: *call,
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
 		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
@@ -255,12 +231,33 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 			log.Info().Msgf("error occured: +%s", err.Error())
 			continue
 		}
-		bridge.extrinsicsChan <- Extrinsic{
-			call: *call,
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
 		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 	}
 
 	return nil
+}
+
+func (bridge *Bridge) callExtrinsic(call *types.Call) (*types.Hash, error) {
+	bridge.mut.Lock()
+	defer bridge.mut.Unlock()
+
+	cl, meta, err := bridge.subClient.GetClient()
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info().Msgf("call ready to be submitted")
+	hash, err := bridge.subClient.Substrate.Call(cl, meta, bridge.identity, *call)
+	if err != nil {
+		log.Error().Msgf("error occurred while submitting call %+v", err)
+		return nil, err
+	}
+
+	return &hash, nil
 }
 
 // mint handler for stellar
@@ -321,15 +318,11 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return err
 	}
 
-	errChan := make(chan error)
-	bridge.extrinsicsChan <- Extrinsic{
-		call: *call,
-		err:  errChan,
-	}
-
-	if err := <-errChan; err != nil {
+	hash, err := bridge.callExtrinsic(call)
+	if err != nil {
 		return err
 	}
+	log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 
 	log.Info().Msg("Mint succesfull, saving cursor now")
 	// save cursor
@@ -354,15 +347,11 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 		return nil
 	}
 
-	errChan := make(chan error)
-	bridge.extrinsicsChan <- Extrinsic{
-		call: *call,
-		err:  errChan,
-	}
-
-	if err := <-errChan; err != nil {
+	hash, err := bridge.callExtrinsic(call)
+	if err != nil {
 		return err
 	}
+	log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 
 	// save cursor
 	cursor := tx.PagingToken()
