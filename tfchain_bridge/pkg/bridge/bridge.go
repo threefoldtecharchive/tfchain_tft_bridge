@@ -9,13 +9,10 @@ import (
 	"sync"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
-	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/strkey"
 	"github.com/threefoldtech/substrate-client"
-	subclient "github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 	"github.com/threefoldtech/tfchain_bridge/pkg/stellar"
 	subpkg "github.com/threefoldtech/tfchain_bridge/pkg/substrate"
@@ -217,7 +214,7 @@ func (bridge *Bridge) processEventsForHeight(height uint32) error {
 	return nil
 }
 
-func (bridge *Bridge) processEventRecords(events *subclient.EventRecords) error {
+func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error {
 	for _, e := range events.TFTBridgeModule_RefundTransactionReady {
 		log.Info().Msg("found refund transaction ready event")
 		call, err := bridge.submitRefundTransaction(context.Background(), e)
@@ -413,7 +410,7 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent subclient.RefundTransactionReady) (*types.Call, error) {
+func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
 	refunded, err := bridge.subClient.IsRefundedAlready(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
 	if err != nil {
 		return nil, err
@@ -437,7 +434,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 	return bridge.subClient.SetRefundTransactionExecuted(bridge.identity, refund.TxHash)
 }
 
-func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent subclient.BridgeBurnTransactionCreated) (*types.Call, error) {
+func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BridgeBurnTransactionCreated) (*types.Call, error) {
 	log.Info().Msg("going to propose burn transaction")
 	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
@@ -459,7 +456,7 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent subclient.BurnTransactionReady) (*types.Call, error) {
+func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) (*types.Call, error) {
 	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnReadyEvent.BurnTransactionID)
 
 	if err != nil {
@@ -488,28 +485,6 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 	}
 
 	return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
-}
-
-func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {
-	versionbyte, pubkeydata, err := strkey.DecodeAny(address)
-	if err != nil {
-		return nil, err
-	}
-	if versionbyte != strkey.VersionByteAccountID {
-		err = fmt.Errorf("%s is not a valid Stellar address", address)
-		return nil, err
-	}
-	pubkey, err := crypto.UnmarshalEd25519PublicKey(pubkeydata)
-	if err != nil {
-		return nil, err
-	}
-
-	bytes, err := pubkey.Raw()
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes, nil
 }
 
 func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {
