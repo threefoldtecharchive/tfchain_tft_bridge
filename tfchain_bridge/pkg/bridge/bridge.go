@@ -147,22 +147,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return errors.Wrap(err, "failed to subscribe to finalized heads")
 	}
 
-	currentBlockNumber, err := bridge.subClient.GetCurrentHeight()
-	if err != nil {
-		return errors.Wrap(err, "failed to get current height")
-	}
-	log.Info().Msgf("saved height is %d, need to sync from saved height until current height %d", height.LastHeight, currentBlockNumber)
-
-	if height.LastHeight < currentBlockNumber {
-		for height := height.LastHeight; height < currentBlockNumber; height++ {
-			err := bridge.processEventsForHeight(height)
-			if err != nil {
-				return errors.Wrap(err, "failed to process events for height")
-
-			}
-		}
-	}
-
 	log.Info().Msgf("bridge synced, resuming normal operations")
 	go func() {
 		for {
@@ -172,8 +156,8 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 				if err != nil {
 					panic(err)
 				}
-				for i := height.LastHeight; i < uint32(head.Number); i++ {
-					err := bridge.processEventsForHeight(uint32(head.Number))
+				for i := height.LastHeight + 1; i <= uint32(head.Number); i++ {
+					err := bridge.processEventsForHeight(i)
 					if err != nil {
 						panic(err)
 					}
