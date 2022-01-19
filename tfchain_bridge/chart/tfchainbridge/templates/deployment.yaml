@@ -41,6 +41,8 @@ spec:
             value: {{ .Values.bridge_wallet_address }}
           - name: STELLAR_NETWORK
             value: {{ .Values.network }}
+          - name: STELLAR_HORIZON
+            value: {{ .Values.stellar_horizon_url }}
           args: [
             "--secret", "$(STELLAR_SECRET)",
             "--tfchainurl", "$(WS_URL)",
@@ -48,6 +50,7 @@ spec:
             "--bridgewallet", "$(BRIDGE_WALLET_ADDRESS)",
             "--network", "$(STELLAR_NETWORK)",
             "--persistency", "/storage/node.json",
+            "--horizon", "$(STELLAR_HORIZON)"
           ]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

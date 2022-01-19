@@ -50,6 +50,10 @@ bridge_wallet_address: ""
 # network: "testnet"
 network:
 
+# Not needed for devnet
+# For testnet / mainnet use mainnet horizon url
+stellar_horizon_url: ""
+
 volume:
   size: 500Mi
   existingpersistentVolumeClaim: ""
