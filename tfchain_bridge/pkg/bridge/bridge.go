@@ -2,21 +2,17 @@ package bridge
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/centrifuge/go-substrate-rpc-client/v3/rpc/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
-	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/strkey"
 	"github.com/threefoldtech/substrate-client"
-	subclient "github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 	"github.com/threefoldtech/tfchain_bridge/pkg/stellar"
 	subpkg "github.com/threefoldtech/tfchain_bridge/pkg/substrate"
@@ -35,13 +31,7 @@ type Bridge struct {
 	blockPersistency *pkg.ChainPersistency
 	mut              sync.Mutex
 	config           *pkg.BridgeConfig
-	extrinsicsChan   chan Extrinsic
 	depositFee       int64
-}
-
-type Extrinsic struct {
-	call types.Call
-	err  chan error
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
@@ -107,32 +97,9 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 }
 
 func (bridge *Bridge) Start(ctx context.Context) error {
-	// all extrinsics to be submitted will be pushed to this channel
-	submitExtrinsicChan := make(chan Extrinsic)
-	bridge.extrinsicsChan = submitExtrinsicChan
-
-	go func() {
-		for ext := range bridge.extrinsicsChan {
-			cl, meta, err := bridge.subClient.GetClient()
-			if err != nil {
-				ext.err <- err
-			}
-			log.Info().Msgf("call ready to be submitted")
-			hash, err := bridge.subClient.Substrate.Call(cl, meta, bridge.identity, ext.call)
-			if err != nil {
-				ext.err <- err
-				log.Error().Msgf("error occurred while submitting call %+v", err)
-			}
-			if ext.err != nil {
-				close(ext.err)
-			}
-			log.Info().Msgf("call submitted, hash=%s", hash.Hex())
-		}
-	}()
-
 	height, err := bridge.blockPersistency.GetHeight()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to get block height from persistency")
 	}
 
 	go func() {
@@ -142,152 +109,155 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		}
 	}()
 
-	go func() {
-		log.Info().Msg("started subs...")
-		sub, key, err := bridge.subClient.SubscribeEvents()
-		if err != nil {
-			panic(err)
-		}
+	cl, _, err := bridge.subClient.GetClient()
+	if err != nil {
+		return errors.Wrap(err, "failed to get client")
+	}
 
-		err = bridge.ProcessSubscription(sub, bridge.extrinsicsChan, key)
-		if err != nil {
-			log.Err(err)
-		}
-	}()
+	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
+	if err != nil {
+		return errors.Wrap(err, "failed to subscribe to finalized heads")
+	}
 
-	currentBlockNumber, err := bridge.subClient.GetCurrentHeight()
+	log.Info().Msgf("bridge synced, resuming normal operations")
+
+	for {
+		select {
+		case head := <-chainHeadsSub.Chan():
+			height, err := bridge.blockPersistency.GetHeight()
+			if err != nil {
+				return err
+			}
+			for i := height.LastHeight + 1; i <= uint32(head.Number); i++ {
+				err := bridge.processEventsForHeight(i)
+				if err != nil {
+					return err
+				}
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (bridge *Bridge) processEventsForHeight(height uint32) error {
+	log.Info().Msgf("fetching events for blockheight %d", height)
+	records, err := bridge.subClient.GetEventsForBlock(height)
+	if err != nil {
+		log.Info().Msgf("failed to decode block with height %d", height)
+		return err
+	}
+
+	err = bridge.processEventRecords(records)
+	if err != nil {
+		if err == substrate.ErrFailedToDecode {
+			log.Err(err).Msgf("failed to decode events at block %d", height)
+			return err
+		} else {
+			return err
+		}
+	}
+
+	log.Debug().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", height)
+	err = bridge.blockPersistency.SaveHeight(height)
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("current blockheight: %d", currentBlockNumber)
 
-	if height.LastHeight < currentBlockNumber {
-		// TODO replay all events from lastheight until current height
-		log.Info().Msgf("saved height is %d, need to sync from saved height until current height..", height.LastHeight)
-		key, set, err := bridge.subClient.FetchEventsForBlockRange(height.LastHeight, currentBlockNumber)
+	return nil
+}
+
+func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error {
+	for _, e := range events.TFTBridgeModule_RefundTransactionReady {
+		log.Info().Msg("found refund transaction ready event")
+		call, err := bridge.submitRefundTransaction(context.Background(), e)
+		if err != nil {
+			log.Info().Msgf("error occured: +%s", err.Error())
+			continue
+		}
+		hash, err := bridge.callExtrinsic(call)
 		if err != nil {
 			return err
 		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+	}
 
-		err = bridge.processEvents(submitExtrinsicChan, key, set)
+	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
+		log.Info().Msg("found burn transaction creted event")
+		call, err := bridge.proposeBurnTransaction(context.Background(), e)
 		if err != nil {
-			if err == substrate.ErrFailedToDecode {
-				log.Err(err)
-			} else {
-				return err
-			}
+			log.Info().Msgf("error occured: +%s", err.Error())
+			continue
 		}
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+	}
+
+	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
+		log.Info().Msg("found burn transaction ready event")
+		call, err := bridge.submitBurnTransaction(context.Background(), e)
+		if err != nil {
+			log.Info().Msgf("error occured: +%s", err.Error())
+			continue
+		}
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+	}
+
+	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
+		log.Info().Msg("found burn transaction expired event")
+		call, err := bridge.proposeBurnTransaction(context.Background(), e)
+		if err != nil {
+			log.Info().Msgf("error occured: +%s", err.Error())
+			continue
+		}
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+	}
+
+	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
+		log.Info().Msgf("found expired refund transaction")
+		call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
+		if err != nil {
+			log.Info().Msgf("error occured: +%s", err.Error())
+			continue
+		}
+		hash, err := bridge.callExtrinsic(call)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 	}
 
 	return nil
 }
 
-func (bridge *Bridge) ProcessSubscription(sub *state.StorageSubscription, callChan chan Extrinsic, key types.StorageKey) error {
-	for {
-		set := <-sub.Chan()
-		// inner loop for the changes within one of those notifications
+func (bridge *Bridge) callExtrinsic(call *types.Call) (*types.Hash, error) {
+	bridge.mut.Lock()
+	defer bridge.mut.Unlock()
 
-		err := bridge.processEvents(callChan, key, []types.StorageChangeSet{set})
-		if err != nil {
-			log.Err(err).Msg("error while processing events")
-		}
-
-		bl, err := bridge.subClient.GetBlock(set.Block)
-		if err != nil {
-			return err
-		}
-		log.Debug().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", bl.Block.Header.Number)
-		err = bridge.blockPersistency.SaveHeight(uint32(bl.Block.Header.Number))
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (bridge *Bridge) processEvents(callChan chan Extrinsic, key types.StorageKey, changeset []types.StorageChangeSet) error {
-	for _, set := range changeset {
-		for _, chng := range set.Changes {
-			if !types.Eq(chng.StorageKey, key) || !chng.HasStorageData {
-				// skip, we are only interested in events with content
-				continue
-			}
-
-			_, meta, err := bridge.subClient.GetClient()
-			if err != nil {
-				return err
-			}
-
-			// Decode the event records
-			events := subclient.EventRecords{}
-			err = types.EventRecordsRaw(chng.StorageData).DecodeEventRecords(meta, &events)
-			if err != nil {
-				log.Err(err)
-			}
-
-			for _, e := range events.TFTBridgeModule_RefundTransactionReady {
-				log.Info().Msg("found refund transaction ready event")
-				call, err := bridge.submitRefundTransaction(context.Background(), e)
-				if err != nil {
-					log.Info().Msgf("error occured: +%s", err.Error())
-					continue
-				}
-				callChan <- Extrinsic{
-					call: *call,
-				}
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-				log.Info().Msg("found burn transaction creted event")
-				call, err := bridge.proposeBurnTransaction(context.Background(), e)
-				if err != nil {
-					log.Info().Msgf("error occured: +%s", err.Error())
-					continue
-				}
-				callChan <- Extrinsic{
-					call: *call,
-				}
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-				log.Info().Msg("found burn transaction ready event")
-				call, err := bridge.submitBurnTransaction(context.Background(), e)
-				if err != nil {
-					log.Info().Msgf("error occured: +%s", err.Error())
-					continue
-				}
-				fmt.Println(call)
-				callChan <- Extrinsic{
-					call: *call,
-				}
-			}
-
-			for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
-				log.Info().Msg("found burn transaction expired event")
-				call, err := bridge.proposeBurnTransaction(context.Background(), e)
-				if err != nil {
-					log.Info().Msgf("error occured: +%s", err.Error())
-					continue
-				}
-				callChan <- Extrinsic{
-					call: *call,
-				}
-			}
-
-			for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
-				log.Info().Msgf("found expired refund transaction")
-				call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
-				if err != nil {
-					log.Info().Msgf("error occured: +%s", err.Error())
-					continue
-				}
-				callChan <- Extrinsic{
-					call: *call,
-				}
-			}
-		}
+	cl, meta, err := bridge.subClient.GetClient()
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	log.Info().Msgf("call ready to be submitted")
+	hash, err := bridge.subClient.Substrate.Call(cl, meta, bridge.identity, *call)
+	if err != nil {
+		log.Error().Msgf("error occurred while submitting call %+v", err)
+		return nil, err
+	}
+
+	return &hash, nil
 }
 
 // mint handler for stellar
@@ -348,15 +318,11 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return err
 	}
 
-	errChan := make(chan error)
-	bridge.extrinsicsChan <- Extrinsic{
-		call: *call,
-		err:  errChan,
-	}
-
-	if err := <-errChan; err != nil {
+	hash, err := bridge.callExtrinsic(call)
+	if err != nil {
 		return err
 	}
+	log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 
 	log.Info().Msg("Mint succesfull, saving cursor now")
 	// save cursor
@@ -381,15 +347,11 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 		return nil
 	}
 
-	errChan := make(chan error)
-	bridge.extrinsicsChan <- Extrinsic{
-		call: *call,
-		err:  errChan,
-	}
-
-	if err := <-errChan; err != nil {
+	hash, err := bridge.callExtrinsic(call)
+	if err != nil {
 		return err
 	}
+	log.Info().Msgf("call submitted with hash: %s", hash.Hex())
 
 	// save cursor
 	cursor := tx.PagingToken()
@@ -421,7 +383,7 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent subclient.RefundTransactionReady) (*types.Call, error) {
+func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
 	refunded, err := bridge.subClient.IsRefundedAlready(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
 	if err != nil {
 		return nil, err
@@ -445,7 +407,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 	return bridge.subClient.SetRefundTransactionExecuted(bridge.identity, refund.TxHash)
 }
 
-func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent subclient.BridgeBurnTransactionCreated) (*types.Call, error) {
+func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BridgeBurnTransactionCreated) (*types.Call, error) {
 	log.Info().Msg("going to propose burn transaction")
 	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
@@ -467,7 +429,7 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent subclient.BurnTransactionReady) (*types.Call, error) {
+func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) (*types.Call, error) {
 	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnReadyEvent.BurnTransactionID)
 
 	if err != nil {
@@ -496,28 +458,6 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 	}
 
 	return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
-}
-
-func getSubstrateAddressFromStellarAddress(address string) ([]byte, error) {
-	versionbyte, pubkeydata, err := strkey.DecodeAny(address)
-	if err != nil {
-		return nil, err
-	}
-	if versionbyte != strkey.VersionByteAccountID {
-		err = fmt.Errorf("%s is not a valid Stellar address", address)
-		return nil, err
-	}
-	pubkey, err := crypto.UnmarshalEd25519PublicKey(pubkeydata)
-	if err != nil {
-		return nil, err
-	}
-
-	bytes, err := pubkey.Raw()
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes, nil
 }
 
 func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {
