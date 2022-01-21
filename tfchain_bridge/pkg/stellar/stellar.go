@@ -251,9 +251,9 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 				v := fmt.Sprint(resultCodes["transaction"])
 				if v == "tx_bad_seq" {
 					log.Info().Msgf("tx bad sequence received, resetting sequence numbers")
-					err = w.resetAccountSequence()
-					if err != nil {
-						return err
+					errSequence := w.resetAccountSequence()
+					if errSequence != nil {
+						return errSequence
 					}
 				}
 			}
