@@ -246,18 +246,13 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 	if err != nil {
 		log.Info().Msg(err.Error())
 		if hError, ok := err.(*horizonclient.Error); ok {
-			resultCodes, ok := hError.Problem.Extras["result_codes"].(map[string]interface{})
 			if ok {
-				v := fmt.Sprint(resultCodes["transaction"])
-				if v == "tx_bad_seq" {
-					log.Info().Msgf("tx bad sequence received, resetting sequence numbers")
-					errSequence := w.resetAccountSequence()
-					if errSequence != nil {
-						return errSequence
-					}
-				}
+				log.Err(err).Msgf("error while submitting transaction %+v", hError.Problem.Extras)
 			}
-
+		}
+		errSequence := w.resetAccountSequence()
+		if errSequence != nil {
+			return errSequence
 		}
 		return errors.Wrap(err, "error submitting transaction")
 	}
@@ -267,6 +262,7 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 }
 
 func (w *StellarWallet) resetAccountSequence() error {
+	log.Info().Msgf("resetting account sequence")
 	account, err := w.GetAccountDetails(w.config.StellarBridgeAccount)
 	if err != nil {
 		return err
