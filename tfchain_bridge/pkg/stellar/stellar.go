@@ -209,7 +209,7 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 		Operations:           paymentOperations,
 		Timebounds:           txnbuild.NewInfiniteTimeout(),
 		SourceAccount:        &txnbuild.SimpleAccount{AccountID: sourceAccount.AccountID, Sequence: w.sequenceNumber},
-		BaseFee:              txnbuild.MinBaseFee * 3,
+		BaseFee:              txnbuild.MinBaseFee * 1000,
 		IncrementSequenceNum: false,
 	}
 
@@ -241,7 +241,7 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 		return errors.Wrap(err, "failed to get horizon client")
 	}
 
-	// Submit the transactions
+	// Submit the transaction
 	txResult, err := client.SubmitTransaction(txn)
 	if err != nil {
 		log.Info().Msg(err.Error())
@@ -257,7 +257,6 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 		return errors.Wrap(err, "error submitting transaction")
 	}
 	log.Info().Msg(fmt.Sprintf("transaction: %s submitted to the stellar network..", txResult.Hash))
-
 	return nil
 }
 
