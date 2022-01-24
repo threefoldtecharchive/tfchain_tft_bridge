@@ -179,11 +179,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 		if err != nil {
 			return err
 		}
-		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+		log.Info().Msgf("submit refund call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-		log.Info().Msg("found burn transaction creted event")
+		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction created event")
 		call, err := bridge.proposeBurnTransaction(context.Background(), e)
 		if err != nil {
 			log.Info().Msgf("error occured: +%s", err.Error())
@@ -193,11 +193,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 		if err != nil {
 			return err
 		}
-		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+		log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-		log.Info().Msg("found burn transaction ready event")
+		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction ready event")
 		call, err := bridge.submitBurnTransaction(context.Background(), e)
 		if err != nil {
 			log.Info().Msgf("error occured: +%s", err.Error())
@@ -207,11 +207,11 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 		if err != nil {
 			return err
 		}
-		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+		log.Info().Msgf("submit burn call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
-		log.Info().Msg("found burn transaction expired event")
+		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction expired event")
 		call, err := bridge.proposeBurnTransaction(context.Background(), e)
 		if err != nil {
 			log.Info().Msgf("error occured: +%s", err.Error())
@@ -221,7 +221,7 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 		if err != nil {
 			return err
 		}
-		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+		log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
@@ -235,7 +235,7 @@ func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error 
 		if err != nil {
 			return err
 		}
-		log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+		log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
 	}
 
 	return nil
@@ -322,7 +322,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+	log.Info().Msgf("mint call submitted with hash: %s", hash.Hex())
 
 	log.Info().Msg("Mint succesfull, saving cursor now")
 	// save cursor
@@ -351,7 +351,7 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash: %s", hash.Hex())
+	log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
 
 	// save cursor
 	cursor := tx.PagingToken()
@@ -408,7 +408,6 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 }
 
 func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BridgeBurnTransactionCreated) (*types.Call, error) {
-	log.Info().Msg("going to propose burn transaction")
 	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
 		return nil, err
@@ -424,7 +423,7 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 	if err != nil {
 		return nil, err
 	}
-	log.Info().Msgf("seq number: %d", sequenceNumber)
+	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
 	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
