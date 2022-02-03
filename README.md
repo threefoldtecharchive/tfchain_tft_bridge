@@ -1,3 +1,3 @@
-# tft-parity
+# Tfchain TFT bridge
 
-TFT on a parity chain
+Bridge TFT between a TFchain and the Stellar network.
