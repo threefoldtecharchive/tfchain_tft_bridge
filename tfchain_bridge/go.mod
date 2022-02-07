@@ -54,6 +54,6 @@ require (
 	github.com/minio/sha256-simd v0.1.1 // indirect
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/stellar/go-xdr v0.0.0-20201028102745-f80a23dac78a // indirect
-	github.com/threefoldtech/substrate-client v0.0.0-20220118133601-4e68945dc064 // indirect
+	github.com/threefoldtech/substrate-client v0.0.0-20220207080854-15db28978fac // indirect
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
 )
