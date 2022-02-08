@@ -372,7 +372,7 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 
 	if refunded {
 		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
-		return nil, nil
+		return nil, errors.New("tx refunded already")
 	}
 
 	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
