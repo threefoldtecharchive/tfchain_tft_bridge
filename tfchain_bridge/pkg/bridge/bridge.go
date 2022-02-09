@@ -278,6 +278,19 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		depositedAmount = amount
 	}
 
+	if tx.MemoType == "hash" {
+		log.Error().Msgf("transaction with hash %s has a return memo hash, skipping this transaction", tx.Hash)
+		// save cursor
+		cursor := tx.PagingToken()
+		err := bridge.blockPersistency.SaveStellarCursor(cursor)
+		if err != nil {
+			log.Error().Msgf("error while saving cursor:", err.Error())
+			return err
+		}
+		log.Info().Msg("stellar cursor saved")
+		return nil
+	}
+
 	if tx.Memo == "" {
 		log.Error().Msgf("transaction with hash %s has empty memo, refunding now", tx.Hash)
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
