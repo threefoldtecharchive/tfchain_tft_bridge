@@ -1,6 +1,0 @@
-:80 {
-  templates
-  root * /usr/share/caddy
-  try_files {path} /index.html
-  file_server
-}
