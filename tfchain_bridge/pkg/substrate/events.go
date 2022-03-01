@@ -1,8 +1,8 @@
 package substrate
 
 import (
-	"github.com/centrifuge/go-substrate-rpc-client/v3/rpc/state"
-	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/rpc/state"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 )
 
 func (s *SubstrateClient) SubscribeEvents() (*state.StorageSubscription, types.StorageKey, error) {

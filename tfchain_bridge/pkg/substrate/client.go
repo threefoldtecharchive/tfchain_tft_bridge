@@ -26,7 +26,8 @@ type SubstrateClient struct {
 
 // NewSubstrate creates a substrate client
 func NewSubstrateClient(url string) (*SubstrateClient, error) {
-	cl, err := substrate.NewSubstrate(url)
+	mngr := substrate.NewManager(url)
+	cl, err := mngr.Substrate()
 	if err != nil {
 		return nil, err
 	}

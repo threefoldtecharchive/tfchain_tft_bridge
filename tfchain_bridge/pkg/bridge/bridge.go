@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	hProtocol "github.com/stellar/go/protocols/horizon"
@@ -282,7 +282,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		log.Error().Msgf("transaction with hash %s has empty memo, refunding now", tx.Hash)
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
-	
+
 	if tx.MemoType == "return" {
 		log.Error().Msgf("transaction with hash %s has a return memo hash, skipping this transaction", tx.Hash)
 		// save cursor
