@@ -520,6 +520,8 @@ github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.1-0.20220224103912-af82
 github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.1-0.20220224103912-af82b63a1bda/go.mod h1:Mo1w5OuYcq6hYiNQx+GCg8ot8UEXg4OHlej19kdFCZk=
 github.com/threefoldtech/substrate-client v0.0.0-20220301154957-c804f16eaef2 h1:DUF5qtfh7yJ7jfjbCRL8wlPO9WHdVKJVkm7lfHKrCGo=
 github.com/threefoldtech/substrate-client v0.0.0-20220301154957-c804f16eaef2/go.mod h1:Lpsz7gVNSdbWD8erfVh1AZv2wnProc7g/QHJiYp5lP8=
+github.com/threefoldtech/substrate-client v0.0.0-20220311140605-844c4a28d993 h1:cZEViUIuhP22Qu32LzclKCKY637qUlN/3qMfrWxtdm8=
+github.com/threefoldtech/substrate-client v0.0.0-20220311140605-844c4a28d993/go.mod h1:Lpsz7gVNSdbWD8erfVh1AZv2wnProc7g/QHJiYp5lP8=
 github.com/threefoldtech/substrate-client v0.0.0-20220311155549-b19ac3fcada8 h1:uYfTsfBbk4DIsEmM6dKlqQC/a8HpN+aECK61uiddrFQ=
 github.com/threefoldtech/substrate-client v0.0.0-20220311155549-b19ac3fcada8/go.mod h1:Lpsz7gVNSdbWD8erfVh1AZv2wnProc7g/QHJiYp5lP8=
 github.com/tinylib/msgp v1.0.2/go.mod h1:+d+yLhGm8mzTaHzB+wgMYrodPfmZrzkirds8fDWklFE=
