@@ -19,7 +19,7 @@ require (
 	github.com/vedhavyas/go-subkey v1.0.3
 )
 
-require github.com/threefoldtech/substrate-client v0.0.0-20220311155549-b19ac3fcada8
+require github.com/threefoldtech/substrate-client v0.0.0-20220314163503-6a315cacdd00
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect
