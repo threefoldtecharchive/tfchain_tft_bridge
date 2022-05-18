@@ -118,19 +118,131 @@ fn mint_flow() {
 }
 
 #[test]
+fn burn_approval_retries_works() {
+    new_test_ext().execute_with(|| {
+        prepare_validators();
+        run_to_block(1);
+
+        assert_ok!(TFTBridgeModule::swap_to_stellar(
+            Origin::signed(bob()),
+            "some_stellar_address".as_bytes().to_vec(),
+            2000000000
+        ));
+
+        // Advance 41 blocks, so the expiration interval gets triggered twice
+        // Should return 2 expire events
+        run_to_block(42);
+
+        // We can still approve a burn transaction later on
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
+            Origin::signed(alice()),
+            1,
+            "some_stellar_address".as_bytes().to_vec(),
+            1500000000,
+            "some_sig".as_bytes().to_vec(),
+            "some_stellar_pubkey".as_bytes().to_vec(),
+            1
+        ));
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
+            Origin::signed(bob()),
+            1,
+            "some_stellar_address".as_bytes().to_vec(),
+            1500000000,
+            "bob_sig".as_bytes().to_vec(),
+            "bob_stellar_pubkey".as_bytes().to_vec(),
+            1
+        ));
+        let burn_tx = TFTBridgeModule::burn_transactions(1);
+        assert_eq!(burn_tx.signatures.len(), 2);
+
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
+            Origin::signed(eve()),
+            1,
+            "some_stellar_address".as_bytes().to_vec(),
+            1500000000,
+            "some_other_eve_sig".as_bytes().to_vec(),
+            "eve_stellar_pubkey".as_bytes().to_vec(),
+            1
+        ));
+        let executed_burn_tx = TFTBridgeModule::burn_transactions(1);
+        assert_eq!(executed_burn_tx.signatures.len(), 3);
+
+        // Test that the expected events were emitted
+        let our_events = System::events()
+        .into_iter()
+        .map(|r| r.event)
+        .filter_map(|e| {
+            if let Event::pallet_tft_bridge(inner) = e {
+                Some(inner)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    
+        for e in our_events.iter() {
+            println!("event: {:?}", e);
+        }
+        let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> =
+            vec![
+                RawEvent::BurnTransactionExpired(
+                    1,
+                    "some_stellar_address".as_bytes().to_vec(),
+                    1500000000,
+                ),
+                RawEvent::BurnTransactionReady(
+                    1,
+                )
+            ];
+        // 1st event should be an expire event
+        assert_eq!(our_events[1], expected_events[0]);
+        // 2nd event should be an expire event
+        assert_eq!(our_events[2], expected_events[0]);
+        // 6th event should be burn tx ready event
+        assert_eq!(our_events[6], expected_events[1]);
+    });
+}
+
+#[test]
 fn proposing_burn_transaction_works() {
     new_test_ext().execute_with(|| {
         prepare_validators();
+
+        assert_ok!(TFTBridgeModule::swap_to_stellar(
+            Origin::signed(bob()),
+            "some_stellar_address".as_bytes().to_vec(),
+            2000000000
+        ));
 
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
             "some_stellar_address".as_bytes().to_vec(),
-            2,
+            1500000000,
             "some_sig".as_bytes().to_vec(),
             "some_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
+    });
+}
+
+#[test]
+fn proposing_burn_transaction_if_no_burn_was_made_fails() {
+    new_test_ext().execute_with(|| {
+        prepare_validators();
+
+        assert_noop!(
+            TFTBridgeModule::propose_burn_transaction_or_add_sig(
+                Origin::signed(alice()),
+                1,
+                "some_stellar_address".as_bytes().to_vec(),
+                2,
+                "some_sig".as_bytes().to_vec(),
+                "some_stellar_pubkey".as_bytes().to_vec(),
+                1
+            ),
+            Error::<TestRuntime>::BurnTransactionNotExists
+        );
     });
 }
 
@@ -187,11 +299,15 @@ fn burn_flow() {
             2000000000
         ));
 
+
+        // amount that needs to be burned is: 
+        // 2000000000 - fee (500000000)
+
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
             "some_stellar_address".as_bytes().to_vec(),
-            2000000000,
+            1500000000,
             "alice_sig".as_bytes().to_vec(),
             "alice_stellar_pubkey".as_bytes().to_vec(),
             1
@@ -201,7 +317,7 @@ fn burn_flow() {
             Origin::signed(bob()),
             1,
             "some_stellar_address".as_bytes().to_vec(),
-            2000000000,
+            1500000000,
             "bob_sig".as_bytes().to_vec(),
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
@@ -213,7 +329,7 @@ fn burn_flow() {
             Origin::signed(eve()),
             1,
             "some_stellar_address".as_bytes().to_vec(),
-            2000000000,
+            1500000000,
             "some_other_eve_sig".as_bytes().to_vec(),
             "eve_stellar_pubkey".as_bytes().to_vec(),
             1
@@ -248,11 +364,14 @@ fn burn_flow_expired() {
             750000000
         ));
 
+        // amount that needs to be burned is: 
+        // 750000000 - fee (500000000)
+
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
             "some_stellar_address".as_bytes().to_vec(),
-            750000000,
+            250000000,
             "alice_sig".as_bytes().to_vec(),
             "alice_stellar_pubkey".as_bytes().to_vec(),
             1
@@ -262,7 +381,7 @@ fn burn_flow_expired() {
             Origin::signed(bob()),
             1,
             "some_stellar_address".as_bytes().to_vec(),
-            750000000,
+            250000000,
             "bob_sig".as_bytes().to_vec(),
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
@@ -294,7 +413,7 @@ fn burn_flow_expired() {
             vec![RawEvent::BurnTransactionExpired(
                 1,
                 "some_stellar_address".as_bytes().to_vec(),
-                750000000,
+                250000000,
             )];
         assert_eq!(our_events[4], expected_events[0]);
 
