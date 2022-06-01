@@ -10,11 +10,10 @@ require (
 
 require (
 	github.com/ethereum/go-ethereum v1.10.16
-	github.com/klauspost/compress v1.9.5 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/rs/zerolog v1.26.0
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/stellar/go v0.0.0-20210922122349-e6f322c047c5
+	github.com/stellar/go v0.0.0-20220531233648-5c7b70ce9b62
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/vedhavyas/go-subkey v1.0.3
 )
@@ -43,10 +42,10 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/segmentio/go-loggly v0.5.1-0.20171222203950-eb91657e62b2 // indirect
-	github.com/stellar/go-xdr v0.0.0-20201028102745-f80a23dac78a // indirect
+	github.com/stellar/go-xdr v0.0.0-20211103144802-8017fc4bdfee // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-	golang.org/x/crypto v0.0.0-20211117183948-ae814b36b871 // indirect
-	golang.org/x/sys v0.0.0-20211124211545-fe61309f8881 // indirect
+	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
+	golang.org/x/sys v0.0.0-20220227234510-4e6760a101f9 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

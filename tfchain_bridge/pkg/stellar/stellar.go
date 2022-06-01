@@ -207,7 +207,6 @@ func (w *StellarWallet) generatePaymentOperation(amount uint64, destination stri
 
 	txnBuild := txnbuild.TransactionParams{
 		Operations:           paymentOperations,
-		Timebounds:           txnbuild.NewInfiniteTimeout(),
 		SourceAccount:        &txnbuild.SimpleAccount{AccountID: sourceAccount.AccountID, Sequence: w.sequenceNumber},
 		BaseFee:              txnbuild.MinBaseFee * 1000,
 		IncrementSequenceNum: false,
