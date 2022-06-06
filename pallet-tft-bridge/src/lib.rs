@@ -84,6 +84,7 @@ decl_error! {
 		NotEnoughBalanceToSwap,
 		AmountIsLessThanWithdrawFee,
 		AmountIsLessThanDepositFee,
+		WrongParametersProvided
 	}
 }
 
@@ -176,6 +177,7 @@ decl_storage! {
 decl_module! {
 	pub struct Module<T: Config> for enum Call where origin: T::Origin {
 		fn deposit_event() = default;
+
 		#[weight = 10_000]
 		fn add_bridge_validator(origin, target: T::AccountId){
             T::RestrictedOrigin::ensure_origin(origin)?;
@@ -210,6 +212,7 @@ decl_module! {
 			let source = ensure_signed(origin)?;
 			Self::burn_tft(source, target_stellar_address, amount)?;
 		}
+
 		#[weight = 10_000]
 		fn propose_or_vote_mint_transaction(origin, transaction: Vec<u8>, target: T::AccountId, amount: u64){
 			let validator = ensure_signed(origin)?;
@@ -255,7 +258,7 @@ decl_module! {
 					tx.block = block;
 
 					// update tx in storage
-					BurnTransactions::<T>::insert(tx_id.clone(), &tx);
+					BurnTransactions::<T>::insert(&tx_id, &tx);
 
 					// Emit event
 					Self::deposit_event(RawEvent::BurnTransactionExpired(tx_id, tx.target, tx.amount));
@@ -274,7 +277,7 @@ decl_module! {
 					tx.block = block;
 
 					// update tx in storage
-					RefundTransactions::<T>::insert(tx_id.clone(), &tx);
+					RefundTransactions::<T>::insert(&tx_id, &tx);
 
 					// Emit event
 					Self::deposit_event(RawEvent::RefundTransactionExpired(tx_id, tx.target, tx.amount));
@@ -348,9 +351,20 @@ impl<T: Config> Module<T> {
 		let burn_amount_as_u64 = amount.saturated_into::<u64>() - withdraw_fee;
 		Self::deposit_event(RawEvent::BurnTransactionCreated(
 			burn_id,
-			target_stellar_address,
+			target_stellar_address.clone(),
 			burn_amount_as_u64,
 		));
+
+		// Create transaction with empty signatures
+		let now = <frame_system::Module<T>>::block_number();
+		let tx = BurnTransaction {
+			block: now,
+			amount: burn_amount_as_u64,
+			target: target_stellar_address,
+			signatures: Vec::new(),
+			sequence_number: 0,
+		};
+		BurnTransactions::<T>::insert(burn_id, &tx);
 
 		Ok(())
 	}
@@ -469,13 +483,29 @@ impl<T: Config> Module<T> {
 		stellar_pub_key: Vec<u8>,
 		sequence_number: u64,
 	) -> DispatchResult {
+		Self::check_if_validator_exists(validator.clone())?;
+
 		// check if it already has been executed in the past
 		ensure!(
 			!ExecutedBurnTransactions::<T>::contains_key(tx_id),
 			Error::<T>::BurnTransactionAlreadyExecuted
 		);
 
-		Self::check_if_validator_exists(validator.clone())?;
+		let mut burn_tx = BurnTransactions::<T>::get(tx_id);
+		ensure!(
+			BurnTransactions::<T>::contains_key(tx_id),
+			Error::<T>::BurnTransactionNotExists
+		);
+
+		ensure!(
+			burn_tx.amount == amount,
+			Error::<T>::WrongParametersProvided
+		);
+		ensure!(
+			burn_tx.target == target,
+			Error::<T>::WrongParametersProvided
+		);
+
 		if BurnTransactions::<T>::contains_key(tx_id) {
 			return Self::add_stellar_sig_burn_transaction(
 				tx_id,
@@ -486,14 +516,10 @@ impl<T: Config> Module<T> {
 		}
 
 		let now = <frame_system::Module<T>>::block_number();
-		let tx = BurnTransaction {
-			block: now,
-			target: target.clone(),
-			amount,
-			signatures: Vec::new(),
-			sequence_number,
-		};
-		BurnTransactions::<T>::insert(tx_id.clone(), &tx);
+
+		burn_tx.block = now;
+		burn_tx.sequence_number = sequence_number;
+		BurnTransactions::<T>::insert(tx_id.clone(), &burn_tx);
 
 		Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key, sequence_number)?;
 

@@ -102,13 +102,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return errors.Wrap(err, "failed to get block height from persistency")
 	}
 
-	go func() {
-		log.Info().Msg("starting minting subscription...")
-		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
-			panic(err)
-		}
-	}()
-
 	cl, _, err := bridge.subClient.GetClient()
 	if err != nil {
 		return errors.Wrap(err, "failed to get client")
@@ -119,20 +112,19 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return errors.Wrap(err, "failed to subscribe to finalized heads")
 	}
 
-	log.Info().Msgf("bridge synced, resuming normal operations")
+	go func() {
+		log.Info().Msg("starting minting subscription...")
+		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
+			panic(err)
+		}
+	}()
 
 	for {
 		select {
 		case head := <-chainHeadsSub.Chan():
-			height, err := bridge.blockPersistency.GetHeight()
+			err := bridge.processEventsForHeight(uint32(head.Number))
 			if err != nil {
 				return err
-			}
-			for i := height.LastHeight + 1; i <= uint32(head.Number); i++ {
-				err := bridge.processEventsForHeight(i)
-				if err != nil {
-					return err
-				}
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -156,12 +148,6 @@ func (bridge *Bridge) processEventsForHeight(height uint32) error {
 		} else {
 			return err
 		}
-	}
-
-	log.Debug().Msgf("events for blockheight %+v processed, saving blockheight to persistency file now...", height)
-	err = bridge.blockPersistency.SaveHeight(height)
-	if err != nil {
-		return err
 	}
 
 	return nil
