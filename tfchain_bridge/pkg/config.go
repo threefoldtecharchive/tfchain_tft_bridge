@@ -27,3 +27,4 @@ type StellarSignature struct {
 }
 
 var ErrTransactionAlreadyMinted = errors.New("transaction is already minted")
+var ErrorRefundedAlready = errors.New("tx refunded already")

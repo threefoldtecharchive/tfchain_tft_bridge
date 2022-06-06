@@ -351,7 +351,9 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 			err = mintFn(senders, tx)
 			for err != nil {
 				log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
-
+				if err == pkg.ErrorRefundedAlready {
+					return
+				}
 				select {
 				case <-ctx.Done():
 					return
