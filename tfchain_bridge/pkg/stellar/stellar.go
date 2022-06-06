@@ -325,7 +325,8 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 			senders := make(map[string]*big.Int)
 			for _, op := range ops.Embedded.Records {
 				if op.GetType() != "payment" {
-					continue
+					log.Info().Msgf("found operation with type %s", op.GetType())
+					return
 				}
 
 				paymentOpation := op.(operations.Payment)
