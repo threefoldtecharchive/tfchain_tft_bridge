@@ -325,7 +325,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 			senders := make(map[string]*big.Int)
 			for _, op := range ops.Embedded.Records {
 				if op.GetType() != "payment" {
-					continue
+					return
 				}
 
 				paymentOpation := op.(operations.Payment)
@@ -351,6 +351,9 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 			err = mintFn(senders, tx)
 			for err != nil {
 				log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
+				if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
+					return
+				}
 
 				select {
 				case <-ctx.Done():

@@ -26,4 +26,5 @@ type StellarSignature struct {
 	StellarAddress []byte
 }
 
+var ErrTransactionAlreadyRefunded = errors.New("Transaction is already refunded")
 var ErrTransactionAlreadyMinted = errors.New("transaction is already minted")

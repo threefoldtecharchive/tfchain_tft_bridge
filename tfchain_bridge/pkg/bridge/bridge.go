@@ -385,7 +385,7 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 
 	if refunded {
 		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
-		return nil, errors.New("tx refunded already")
+		return nil, pkg.ErrTransactionAlreadyRefunded
 	}
 
 	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
@@ -404,7 +404,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 
 	if refunded {
 		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", string(refundReadyEvent.RefundTransactionHash))
-		return nil, errors.New("tx refunded already")
+		return nil, pkg.ErrTransactionAlreadyRefunded
 	}
 
 	refund, err := bridge.subClient.GetRefundTransaction(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
