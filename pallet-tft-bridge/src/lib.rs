@@ -1,13 +1,17 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use frame_support::{
-	decl_event, decl_module, decl_storage, decl_error, ensure, debug,
-	traits::{Currency, OnUnbalanced, ReservableCurrency, Vec, EnsureOrigin},
+	decl_event, decl_module, decl_storage, decl_error, ensure, log,
+	traits::{Currency, OnUnbalanced, ReservableCurrency, EnsureOrigin},
 };
 use frame_system::{self as system, ensure_signed, RawOrigin};
 use sp_runtime::{DispatchResult, DispatchError};
 use codec::{Decode, Encode};
 use sp_runtime::traits::SaturatedConversion;
+
+use scale_info::TypeInfo;
+use sp_std::prelude::*;
+use sp_std::vec::Vec;
 
 #[cfg(test)]
 mod tests;
@@ -91,7 +95,7 @@ decl_error! {
 // MintTransaction contains all the information about
 // Stellar -> TF Chain minting transaction.
 // if the votes field is larger then (number of validators / 2) + 1 , the transaction will be minted
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
 pub struct MintTransaction<AccountId, BlockNumber> {
 	pub amount: u64,
 	pub target: AccountId,
@@ -102,7 +106,7 @@ pub struct MintTransaction<AccountId, BlockNumber> {
 // BurnTransaction contains all the information about
 // TF Chain -> Stellar burn transaction
 // Transaction is ready when (number of validators / 2) + 1 signatures are present
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
 pub struct BurnTransaction<BlockNumber> {
 	pub block: BlockNumber,
 	pub amount: u64,
@@ -111,7 +115,7 @@ pub struct BurnTransaction<BlockNumber> {
 	pub sequence_number: u64,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
 pub struct RefundTransaction<BlockNumber> {
 	pub block: BlockNumber,
 	pub amount: u64,
@@ -121,7 +125,7 @@ pub struct RefundTransaction<BlockNumber> {
 	pub sequence_number: u64,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
 pub struct StellarSignature {
 	pub signature: Vec<u8>,
 	pub stellar_pub_key: Vec<u8>,
@@ -310,7 +314,7 @@ impl<T: Config> Module<T> {
 		// Remove tx from storage
 		MintTransactions::<T>::remove(tx_id.clone());
 		// Insert into executed transactions
-		let now = <system::Module<T>>::block_number();
+		let now = <system::Pallet<T>>::block_number();
 		tx.block = now;
 		ExecutedMintTransactions::<T>::insert(tx_id, &tx);
 
@@ -356,7 +360,7 @@ impl<T: Config> Module<T> {
 		));
 
 		// Create transaction with empty signatures
-		let now = <frame_system::Module<T>>::block_number();
+		let now = <frame_system::Pallet<T>>::block_number();
 		let tx = BurnTransaction {
 			block: now,
 			amount: burn_amount_as_u64,
@@ -391,7 +395,7 @@ impl<T: Config> Module<T> {
 			);
 		}
 
-		let now = <frame_system::Module<T>>::block_number();
+		let now = <frame_system::Pallet<T>>::block_number();
 		let tx = RefundTransaction {
 			block: now,
 			target: target.clone(),
@@ -436,7 +440,7 @@ impl<T: Config> Module<T> {
 			return Self::vote_stellar_mint_transaction(tx_id);
 		}
 
-		let now = <frame_system::Module<T>>::block_number();
+		let now = <frame_system::Pallet<T>>::block_number();
 		let tx = MintTransaction {
 			amount,
 			target: target.clone(),
@@ -467,7 +471,7 @@ impl<T: Config> Module<T> {
 		let validators = Validators::<T>::get();
 		// If majority aggrees on the transaction, mint tokens to target address
 		if mint_transaction.votes as usize >= (validators.len() / 2) + 1 {
-			debug::info!("enough votes, minting transaction...");
+			log::info!("enough votes, minting transaction...");
 			Self::mint_tft(tx_id.clone(), mint_transaction)?;
 		}
 
@@ -515,7 +519,7 @@ impl<T: Config> Module<T> {
 			);
 		}
 
-		let now = <frame_system::Module<T>>::block_number();
+		let now = <frame_system::Pallet<T>>::block_number();
 
 		burn_tx.block = now;
 		burn_tx.sequence_number = sequence_number;
