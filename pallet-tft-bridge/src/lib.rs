@@ -79,6 +79,7 @@ pub mod pallet {
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     #[pallet::storage]
@@ -154,6 +155,9 @@ pub mod pallet {
         /// Origin for restricted extrinsics
         /// Can be the root or another origin configured in the runtime
         type RestrictedOrigin: EnsureOrigin<Self::Origin>;
+
+        // Retry interval for expired transactions
+        type RetryInterval: Get<u32>;
     }
 
     #[pallet::event]
@@ -201,6 +205,53 @@ pub mod pallet {
         AmountIsLessThanWithdrawFee,
         AmountIsLessThanDepositFee,
         WrongParametersProvided,
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_finalize(block: T::BlockNumber) {
+            let current_block_u64: u64 = block.saturated_into::<u64>();
+
+            for (tx_id, mut tx) in BurnTransactions::<T>::iter() {
+                let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
+                // if x blocks have passed since the tx got submitted
+                // we can safely assume this tx is fault
+                // add the faulty tx to the expired tx list
+                if current_block_u64 - tx_block_u64 >= T::RetryInterval::get().into() {
+                    // reset signatures and sequence number
+                    tx.signatures = Vec::new();
+                    tx.sequence_number = 0;
+                    tx.block = block;
+
+                    // update tx in storage
+                    BurnTransactions::<T>::insert(&tx_id, &tx);
+
+                    // Emit event
+                    Self::deposit_event(Event::BurnTransactionExpired(tx_id, tx.target, tx.amount));
+                }
+            }
+
+            for (tx_id, mut tx) in RefundTransactions::<T>::iter() {
+                let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
+                // if x blocks have passed since the tx got submitted
+                // we can safely assume this tx is fault
+                // add the faulty tx to the expired tx list
+                if current_block_u64 - tx_block_u64 >= T::RetryInterval::get().into() {
+                    // reset signatures and sequence number
+                    tx.signatures = Vec::new();
+                    tx.sequence_number = 0;
+                    tx.block = block;
+
+                    // update tx in storage
+                    RefundTransactions::<T>::insert(&tx_id, &tx);
+
+                    // Emit event
+                    Self::deposit_event(Event::RefundTransactionExpired(
+                        tx_id, tx.target, tx.amount,
+                    ));
+                }
+            }
+        }
     }
 
     #[pallet::call]
@@ -507,7 +558,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn vote_stellar_mint_transaction(tx_id: Vec<u8>) -> DispatchResultWithPostInfo {
-        let mut mint_transaction = MintTransactions::<T>::get(tx_id.clone());
+        let mint_transaction = MintTransactions::<T>::get(tx_id.clone());
         match mint_transaction {
             Some(mut tx) => {
                 // increment amount of votes
