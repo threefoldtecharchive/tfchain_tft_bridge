@@ -94,7 +94,7 @@ pub mod pallet {
     #[pallet::getter(fn mint_transactions)]
     pub type MintTransactions<T: Config> = StorageMap<
         _,
-        Identity,
+        Blake2_128Concat,
         Vec<u8>,
         MintTransaction<T::AccountId, T::BlockNumber>,
         OptionQuery,
@@ -104,7 +104,7 @@ pub mod pallet {
     #[pallet::getter(fn executed_mint_transactions)]
     pub type ExecutedMintTransactions<T: Config> = StorageMap<
         _,
-        Identity,
+        Blake2_128Concat,
         Vec<u8>,
         MintTransaction<T::AccountId, T::BlockNumber>,
         OptionQuery,
@@ -113,22 +113,22 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn burn_transactions)]
     pub type BurnTransactions<T: Config> =
-        StorageMap<_, Identity, u64, BurnTransaction<T::BlockNumber>, ValueQuery>;
+        StorageMap<_, Blake2_128Concat, u64, BurnTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn executed_burn_transactions)]
     pub type ExecutedBurnTransactions<T: Config> =
-        StorageMap<_, Identity, u64, BurnTransaction<T::BlockNumber>, ValueQuery>;
+        StorageMap<_, Blake2_128Concat, u64, BurnTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn refund_transactions)]
     pub type RefundTransactions<T: Config> =
-        StorageMap<_, Identity, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
+        StorageMap<_, Blake2_128Concat, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn executed_refund_transactions)]
     pub type ExecutedRefundTransactions<T: Config> =
-        StorageMap<_, Identity, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
+        StorageMap<_, Blake2_128Concat, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn burn_transaction_id)]
