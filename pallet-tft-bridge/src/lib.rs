@@ -209,8 +209,8 @@ pub mod pallet {
 
     #[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
-		pub validator_accounts: Option<Vec<AccountId>>,
-        pub fee_account: Option<AccountId>,
+		pub validator_accounts: Option<Vec<T::AccountId>>,
+        pub fee_account: Option<T::AccountId>,
         pub withdraw_fee: u64,
         pub deposit_fee: u64,
 	}
