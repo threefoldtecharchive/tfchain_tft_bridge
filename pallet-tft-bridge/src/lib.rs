@@ -220,8 +220,8 @@ pub mod pallet {
 	impl<T: Config> Default for GenesisConfig<T> {
 		fn default() -> Self {
 			Self { 
-                validator_accounts: Default::default(),
-                fee_account: Default::default(),
+                validator_accounts: None,
+                fee_account: None,
                 withdraw_fee: Default::default(),
                 deposit_fee: Default::default(),
             }
@@ -235,9 +235,7 @@ pub mod pallet {
                 Validators::<T>::put(validator_accounts);
             }
 
-            if let Some(ref fee_account) = self.fee_account {
-                FeeAccount::<T>::set(fee_account);
-            }
+            FeeAccount::<T>::set(self.fee_account);
             WithdrawFee::<T>::set(self.withdraw_fee);
             DepositFee::<T>::set(self.deposit_fee)
 		}
