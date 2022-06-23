@@ -207,6 +207,43 @@ pub mod pallet {
         WrongParametersProvided,
     }
 
+    #[pallet::genesis_config]
+	pub struct GenesisConfig<T: Config> {
+		pub validator_accounts: Option<Vec<AccountId>>,
+        pub fee_account: Option<AccountId>,
+        pub withdraw_fee: u64,
+        pub deposit_fee: u64,
+	}
+
+    // The default value for the genesis config type.
+	#[cfg(feature = "std")]
+	impl<T: Config> Default for GenesisConfig<T> {
+		fn default() -> Self {
+			Self { 
+                validator_accounts: Default::default(),
+                fee_account: Default::default(),
+                withdraw_fee: Default::default(),
+                deposit_fee: Default::default(),
+            }
+		}
+	}
+
+	#[pallet::genesis_build]
+	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+		fn build(&self) {
+            if let Some(validator_accounts) = self.validator_accounts {
+                T::Validators::<T>::put(validator_accounts);
+            }
+
+            if let Some(fee_account) = self.fee_account {
+                T::FeeAccount::<T>::set(fee_account);
+            }
+
+            T::WithdrawFee.put(self.withdraw_fee);
+            T::DepositFee::<T>::set(self.deposit_fee)
+		}
+	}
+
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_finalize(block: T::BlockNumber) {
