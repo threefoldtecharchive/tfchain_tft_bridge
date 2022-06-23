@@ -235,11 +235,8 @@ pub mod pallet {
                 Validators::<T>::put(validator_accounts);
             }
 
-            if let Some(fee_account) = self.fee_account {
-                FeeAccount::<T>::set(fee_account);
-            }
-
-            WithdrawFee.put(self.withdraw_fee);
+            FeeAccount::<T>::set(self.fee_account);
+            WithdrawFee::<T>::set(self.withdraw_fee);
             DepositFee::<T>::set(self.deposit_fee)
 		}
 	}
