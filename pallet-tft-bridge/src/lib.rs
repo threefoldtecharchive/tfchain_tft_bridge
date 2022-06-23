@@ -231,11 +231,13 @@ pub mod pallet {
 	#[pallet::genesis_build]
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
-            if let Some(validator_accounts) = self.validator_accounts {
+            if let Some(validator_accounts) = &self.validator_accounts {
                 Validators::<T>::put(validator_accounts);
             }
 
-            FeeAccount::<T>::set(self.fee_account);
+            if let Some(ref fee_account) = self.fee_account {
+                FeeAccount::<T>::set(fee_account);
+            }
             WithdrawFee::<T>::set(self.withdraw_fee);
             DepositFee::<T>::set(self.deposit_fee)
 		}
