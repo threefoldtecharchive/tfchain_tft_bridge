@@ -232,15 +232,15 @@ pub mod pallet {
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
             if let Some(validator_accounts) = self.validator_accounts {
-                T::Validators::<T>::put(validator_accounts);
+                Validators::<T>::put(validator_accounts);
             }
 
             if let Some(fee_account) = self.fee_account {
-                T::FeeAccount::<T>::set(fee_account);
+                FeeAccount::<T>::set(fee_account);
             }
 
-            T::WithdrawFee.put(self.withdraw_fee);
-            T::DepositFee::<T>::set(self.deposit_fee)
+            WithdrawFee.put(self.withdraw_fee);
+            DepositFee::<T>::set(self.deposit_fee)
 		}
 	}
 
