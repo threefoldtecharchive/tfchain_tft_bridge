@@ -235,7 +235,7 @@ pub mod pallet {
                 Validators::<T>::put(validator_accounts);
             }
 
-            FeeAccount::<T>::set(self.fee_account);
+            FeeAccount::<T>::set(self.fee_account.as_ref());
             WithdrawFee::<T>::set(self.withdraw_fee);
             DepositFee::<T>::set(self.deposit_fee)
 		}
