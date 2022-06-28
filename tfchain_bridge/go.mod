@@ -9,7 +9,7 @@ require (
 )
 
 require (
-	github.com/ethereum/go-ethereum v1.10.16
+	github.com/ethereum/go-ethereum v1.10.17
 	github.com/klauspost/compress v1.9.5 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/rs/zerolog v1.26.0
@@ -19,7 +19,7 @@ require (
 	github.com/vedhavyas/go-subkey v1.0.3
 )
 
-require github.com/threefoldtech/substrate-client v0.0.0-20220613084053-f1f12e7dcf85
+require github.com/threefoldtech/substrate-client v0.0.0-20220628124426-b8e882f48a1d
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect
@@ -51,4 +51,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
-replace github.com/centrifuge/go-substrate-rpc-client/v4 v4.0.0 => github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.1-0.20220224103912-af82b63a1bda
+replace github.com/centrifuge/go-substrate-rpc-client/v4 => github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.1-0.20220624124808-fbf25558a36c
+
+replace github.com/threefoldtech/substrate-client => /home/dylan/Projects/substrate-client
