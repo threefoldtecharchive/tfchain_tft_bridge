@@ -3,7 +3,7 @@ module github.com/threefoldtech/tfchain_bridge
 go 1.17
 
 require (
-	github.com/centrifuge/go-substrate-rpc-client/v4 v4.0.0
+	github.com/centrifuge/go-substrate-rpc-client/v4 v4.0.2
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
 )
@@ -19,7 +19,7 @@ require (
 	github.com/vedhavyas/go-subkey v1.0.3
 )
 
-require github.com/threefoldtech/substrate-client v0.0.0-20220628124426-b8e882f48a1d
+require github.com/threefoldtech/substrate-client v0.0.0-20220629072807-544d41e5b81a
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect
@@ -51,6 +51,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
-replace github.com/centrifuge/go-substrate-rpc-client/v4 => github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.1-0.20220624124808-fbf25558a36c
-
-replace github.com/threefoldtech/substrate-client => /home/dylan/Projects/substrate-client
+replace github.com/centrifuge/go-substrate-rpc-client/v4 v4.0.2 => github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.3-0.20220629062423-919d421680f4
