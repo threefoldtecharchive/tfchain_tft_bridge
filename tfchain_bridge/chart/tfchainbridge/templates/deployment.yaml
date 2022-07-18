@@ -52,7 +52,7 @@ spec:
             "--persistency", "/storage/node.json",
             "--horizon", "$(STELLAR_HORIZON)",
             {{ if .Values.rescan }}
-            "--rescan",
+            "--rescan=true",
             {{ end}}
           ]
           resources:
