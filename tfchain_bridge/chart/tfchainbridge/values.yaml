@@ -54,6 +54,10 @@ network:
 # For testnet / mainnet use mainnet horizon url
 stellar_horizon_url: ""
 
+# If set to true, bridge wallet address will be rescanned
+# and mints will happen again if they are not already executed
+rescan: false
+
 volume:
   size: 500Mi
   existingpersistentVolumeClaim: ""

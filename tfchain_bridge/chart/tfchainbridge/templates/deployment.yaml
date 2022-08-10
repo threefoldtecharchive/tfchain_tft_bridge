@@ -50,7 +50,10 @@ spec:
             "--bridgewallet", "$(BRIDGE_WALLET_ADDRESS)",
             "--network", "$(STELLAR_NETWORK)",
             "--persistency", "/storage/node.json",
-            "--horizon", "$(STELLAR_HORIZON)"
+            "--horizon", "$(STELLAR_HORIZON)",
+            {{ if .Values.rescan }}
+            "--rescan=true",
+            {{ end}}
           ]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
