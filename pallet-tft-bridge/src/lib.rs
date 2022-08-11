@@ -419,7 +419,7 @@ pub mod pallet {
 
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
         pub fn purge_storage(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
-            let _validator = ensure_signed(origin)?;
+            T::RestrictedOrigin::ensure_origin(origin)?;
             Self::purge_stellar_storage()
         }
     }
