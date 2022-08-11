@@ -208,40 +208,40 @@ pub mod pallet {
     }
 
     #[pallet::genesis_config]
-	pub struct GenesisConfig<T: Config> {
-		pub validator_accounts: Option<Vec<T::AccountId>>,
+    pub struct GenesisConfig<T: Config> {
+        pub validator_accounts: Option<Vec<T::AccountId>>,
         pub fee_account: Option<T::AccountId>,
         pub withdraw_fee: u64,
         pub deposit_fee: u64,
-	}
+    }
 
     // The default value for the genesis config type.
-	#[cfg(feature = "std")]
-	impl<T: Config> Default for GenesisConfig<T> {
-		fn default() -> Self {
-			Self { 
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
                 validator_accounts: None,
                 fee_account: None,
                 withdraw_fee: Default::default(),
                 deposit_fee: Default::default(),
             }
-		}
-	}
+        }
+    }
 
-	#[pallet::genesis_build]
-	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
-		fn build(&self) {
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
             if let Some(validator_accounts) = &self.validator_accounts {
                 Validators::<T>::put(validator_accounts);
             }
 
             if let Some(ref fee_account) = self.fee_account {
-				FeeAccount::<T>::put(fee_account);
-			}
+                FeeAccount::<T>::put(fee_account);
+            }
             WithdrawFee::<T>::put(self.withdraw_fee);
             DepositFee::<T>::put(self.deposit_fee)
-		}
-	}
+        }
+    }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -415,6 +415,12 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let validator = ensure_signed(origin)?;
             Self::set_stellar_refund_transaction_executed(validator, tx_hash)
+        }
+
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        pub fn purge_storage(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+            let _validator = ensure_signed(origin)?;
+            Self::purge_stellar_storage()
         }
     }
 }
@@ -849,6 +855,17 @@ impl<T: Config> Pallet<T> {
             }
             Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
         }
+    }
+
+    pub fn purge_stellar_storage() -> DispatchResultWithPostInfo {
+        let limit = None; // delete all values
+        MintTransactions::<T>::remove_all(limit);
+        ExecutedMintTransactions::<T>::remove_all(limit);
+        BurnTransactions::<T>::remove_all(limit);
+        ExecutedBurnTransactions::<T>::remove_all(limit);
+        RefundTransactions::<T>::remove_all(limit);
+        ExecutedRefundTransactions::<T>::remove_all(limit);
+        Ok(().into())
     }
 
     fn check_if_validator_exists(validator: T::AccountId) -> DispatchResultWithPostInfo {
