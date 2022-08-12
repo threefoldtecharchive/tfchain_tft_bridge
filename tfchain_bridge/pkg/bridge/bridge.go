@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strconv"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/pkg/errors"
@@ -25,22 +24,21 @@ const (
 // Bridge is a high lvl structure which listens on contract events and bridge-related
 // stellar transactions, and handles them
 type Bridge struct {
-	wallet           *stellar.StellarWallet
-	subClient        *subpkg.SubstrateClient
-	identity         substrate.Identity
-	blockPersistency *pkg.ChainPersistency
-	mut              sync.Mutex
-	config           *pkg.BridgeConfig
-	depositFee       int64
+	wallet      *stellar.StellarWallet
+	subClient   *subpkg.SubstrateClient
+	persistency *pkg.ChainPersistency
+	mut         sync.Mutex
+	config      *pkg.BridgeConfig
+	depositFee  int64
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
-	subClient, err := subpkg.NewSubstrateClient(cfg.TfchainURL)
+	tfchainIdentity, err := substrate.NewIdentityFromSr25519Phrase(cfg.TfchainSeed)
 	if err != nil {
 		return nil, err
 	}
 
-	tfchainIdentity, err := substrate.NewIdentityFromSr25519Phrase(cfg.TfchainSeed)
+	subClient, err := subpkg.NewSubstrateClient(cfg.TfchainURL, tfchainIdentity, &Bridge{})
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +52,7 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 		return nil, fmt.Errorf("account provided is not a validator for the bridge runtime")
 	}
 
-	blockPersistency, err := pkg.InitPersist(cfg.PersistencyFile)
+	persistency, err := pkg.InitPersist(cfg.PersistencyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +66,7 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 		// saving the cursor to 0 will trigger the bridge stellar account
 		// to scan for every transaction ever made on the bridge account
 		// and mint accordingly
-		err = blockPersistency.SaveStellarCursor("0")
-		if err != nil {
-			return nil, err
-		}
-		err = blockPersistency.SaveHeight(0)
+		err = persistency.SaveStellarCursor("0")
 		if err != nil {
 			return nil, err
 		}
@@ -85,19 +79,20 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 	}
 
 	bridge := &Bridge{
-		subClient:        subClient,
-		identity:         tfchainIdentity,
-		blockPersistency: blockPersistency,
-		wallet:           wallet,
-		config:           &cfg,
-		depositFee:       depositFee,
+		subClient:   subClient,
+		persistency: persistency,
+		wallet:      wallet,
+		config:      &cfg,
+		depositFee:  depositFee,
 	}
+
+	bridge.subClient.SetTransactor(bridge)
 
 	return bridge, nil
 }
 
 func (bridge *Bridge) Start(ctx context.Context) error {
-	height, err := bridge.blockPersistency.GetHeight()
+	height, err := bridge.persistency.GetHeight()
 	if err != nil {
 		return errors.Wrap(err, "failed to get block height from persistency")
 	}
@@ -107,148 +102,80 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return errors.Wrap(err, "failed to get client")
 	}
 
-	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
-	if err != nil {
-		return errors.Wrap(err, "failed to subscribe to finalized heads")
-	}
-
 	go func() {
-		log.Info().Msg("starting minting subscription...")
+		log.Info().Msg("starting monitoring bridge account...")
 		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
 			panic(err)
 		}
 	}()
 
+	ticker := time.NewTicker(6 * time.Second)
+	quit := make(chan struct{})
+	defer close(quit)
+	go func() {
+		for range ticker.C {
+			height, err := bridge.persistency.GetHeight()
+			if err != nil {
+				log.Err(err).Msg("failed to get persistency height")
+				quit <- struct{}{}
+			}
+			finalizedHeadHash, err := cl.RPC.Chain.GetFinalizedHead()
+			if err != nil {
+				log.Err(err).Msg("failed to fetch finalized head")
+				continue
+			}
+			lastBlock, err := cl.RPC.Chain.GetBlock(finalizedHeadHash)
+			if err != nil {
+				log.Err(err).Msg("failed to fetch block for finalized head")
+				continue
+			}
+
+			// If we already processed this block, skip
+			if lastBlock.Block.Header.Number <= types.BlockNumber(height.LastHeight) {
+				continue
+			}
+
+			err = bridge.subClient.ProcessEventsForHeight(uint32(lastBlock.Block.Header.Number))
+			if err != nil {
+				log.Err(err).Msgf("failed to process events for height: %d", lastBlock.Block.Header.Number)
+				continue
+			}
+
+			log.Debug().Msg("saving processed height now")
+			err = bridge.persistency.SaveHeight(uint32(lastBlock.Block.Header.Number))
+			if err != nil {
+				log.Err(err).Msg("failed to save persistency height")
+				quit <- struct{}{}
+			}
+		}
+	}()
+
+	go func() {
+		for call := range bridge.subClient.CallChan {
+			log.Debug().Msg("received call on channel, executing now")
+			hash, err := bridge.subClient.CallExtrinsic(call)
+			if err != nil {
+				log.Err(err).Msg("failed to make call")
+				quit <- struct{}{}
+			}
+			log.Info().Msgf("call exectued with hash: %s", hash.Hex())
+		}
+	}()
+
 	for {
 		select {
-		case head := <-chainHeadsSub.Chan():
-			err := bridge.processEventsForHeight(uint32(head.Number))
-			if err != nil {
-				return err
-			}
+		case <-quit:
+			ticker.Stop()
+			return errors.New("Bridge stopped unexepectedly")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 }
 
-func (bridge *Bridge) processEventsForHeight(height uint32) error {
-	log.Info().Msgf("fetching events for blockheight %d", height)
-	records, err := bridge.subClient.GetEventsForBlock(height)
-	if err != nil {
-		log.Info().Msgf("failed to decode block with height %d", height)
-		return err
-	}
-
-	err = bridge.processEventRecords(records)
-	if err != nil {
-		if err == substrate.ErrFailedToDecode {
-			log.Err(err).Msgf("failed to decode events at block %d", height)
-			return err
-		} else {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error {
-	for _, e := range events.TFTBridgeModule_RefundTransactionReady {
-		log.Info().Msg("found refund transaction ready event")
-		call, err := bridge.submitRefundTransaction(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("submit refund call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction created event")
-		call, err := bridge.proposeBurnTransaction(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction ready event")
-		call, err := bridge.submitBurnTransaction(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("submit burn call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction expired event")
-		call, err := bridge.proposeBurnTransaction(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
-		log.Info().Msgf("found expired refund transaction")
-		call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
-	}
-
-	return nil
-}
-
-func (bridge *Bridge) callExtrinsic(call *types.Call) (*types.Hash, error) {
-	bridge.mut.Lock()
-	defer bridge.mut.Unlock()
-
-	cl, meta, err := bridge.subClient.GetClient()
-	if err != nil {
-		return nil, err
-	}
-
-	log.Info().Msgf("call ready to be submitted")
-	hash, err := bridge.subClient.Substrate.Call(cl, meta, bridge.identity, *call)
-	if err != nil {
-		log.Error().Msgf("error occurred while submitting call %+v", err)
-		return nil, err
-	}
-
-	return &hash, nil
-}
-
 // mint handler for stellar
 func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction) error {
-	log.Info().Msg("calling mint now")
+	log.Debug().Msg("calling mint now")
 
 	if len(senders) > 1 {
 		log.Error().Msgf("cannot process mint transaction, multiple senders found, refunding now")
@@ -273,17 +200,17 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		log.Error().Msgf("transaction with hash %s has a return memo hash, skipping this transaction", tx.Hash)
 		// save cursor
 		cursor := tx.PagingToken()
-		err := bridge.blockPersistency.SaveStellarCursor(cursor)
+		err := bridge.persistency.SaveStellarCursor(cursor)
 		if err != nil {
 			log.Error().Msgf("error while saving cursor:", err.Error())
 			return err
 		}
-		log.Info().Msg("stellar cursor saved")
+		log.Debug().Msg("stellar cursor saved")
 		return nil
 	}
 
 	// TODO check if we already minted for this txid
-	minted, err := bridge.subClient.IsMintedAlready(bridge.identity, tx.Hash)
+	minted, err := bridge.subClient.IsMintedAlready(bridge.subClient.Id, tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
 		return err
 	}
@@ -298,9 +225,9 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
 
-	destinationSubstrateAddress, err := bridge.getSubstrateAddressFromMemo(tx.Memo)
+	destinationSubstrateAddress, err := bridge.subClient.GetSubstrateAddressFromMemo(tx.Memo)
 	if err != nil {
-		log.Info().Msgf("error while decoding tx memo, %s", err.Error())
+		log.Err(err).Msgf("error while decoding tx memo")
 		// memo is not formatted correctly, issue a refund
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
@@ -312,21 +239,17 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return err
 	}
 
-	call, err := bridge.subClient.ProposeOrVoteMintTransaction(bridge.identity, tx.Hash, accountID, depositedAmount)
+	call, err := bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Id, tx.Hash, accountID, depositedAmount)
 	if err != nil {
 		return err
 	}
 
-	hash, err := bridge.callExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("mint call submitted with hash: %s", hash.Hex())
+	bridge.subClient.CallChan <- call
 
-	log.Info().Msg("Mint succesfull, saving cursor now")
 	// save cursor
 	cursor := tx.PagingToken()
-	err = bridge.blockPersistency.SaveStellarCursor(cursor)
+	log.Debug().Msgf("saving cursor now %s", cursor)
+	err = bridge.persistency.SaveStellarCursor(cursor)
 	if err != nil {
 		log.Error().Msgf("error while saving cursor:", err.Error())
 		return err
@@ -337,6 +260,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 
 // refund handler for stellar
 func (bridge *Bridge) refund(ctx context.Context, destination string, amount int64, tx hProtocol.Transaction) error {
+	log.Debug().Msg("calling refund now")
 	call, err := bridge.createRefund(ctx, destination, amount, tx.Hash)
 	if err != nil {
 		return err
@@ -346,16 +270,12 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 		return nil
 	}
 
-	hash, err := bridge.callExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
+	bridge.subClient.CallChan <- call
 
 	// save cursor
 	cursor := tx.PagingToken()
-	log.Info().Msgf("saving cursor now %s", cursor)
-	err = bridge.blockPersistency.SaveStellarCursor(cursor)
+	log.Debug().Msgf("saving cursor now %s", cursor)
+	err = bridge.persistency.SaveStellarCursor(cursor)
 	if err != nil {
 		log.Error().Msgf("error while saving cursor:", err.Error())
 		return err
@@ -363,8 +283,12 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	return nil
 }
 
+func (bridge *Bridge) CreateRefund(ctx context.Context, refundTransactionCreated substrate.RefundTransactionCreated) (*types.Call, error) {
+	return bridge.createRefund(ctx, string(refundTransactionCreated.Target), int64(refundTransactionCreated.Amount), string(refundTransactionCreated.RefundTransactionHash))
+}
+
 func (bridge *Bridge) createRefund(ctx context.Context, destination string, amount int64, txHash string) (*types.Call, error) {
-	refunded, err := bridge.subClient.IsRefundedAlready(bridge.identity, txHash)
+	refunded, err := bridge.subClient.IsRefundedAlready(bridge.subClient.Id, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -379,11 +303,12 @@ func (bridge *Bridge) createRefund(ctx context.Context, destination string, amou
 		return nil, err
 	}
 
-	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.subClient.Id, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+
 }
 
-func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
-	refunded, err := bridge.subClient.IsRefundedAlready(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+func (bridge *Bridge) SubmitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
+	refunded, err := bridge.subClient.IsRefundedAlready(bridge.subClient.Id, string(refundReadyEvent.RefundTransactionHash))
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +318,7 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 		return nil, pkg.ErrTransactionAlreadyRefunded
 	}
 
-	refund, err := bridge.subClient.GetRefundTransaction(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+	refund, err := bridge.subClient.GetRefundTransaction(bridge.subClient.Id, string(refundReadyEvent.RefundTransactionHash))
 	if err != nil {
 		return nil, err
 	}
@@ -403,11 +328,11 @@ func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEv
 		return nil, err
 	}
 
-	return bridge.subClient.SetRefundTransactionExecuted(bridge.identity, refund.TxHash)
+	return bridge.subClient.SetRefundTransactionExecuted(bridge.subClient.Id, refund.TxHash)
 }
 
-func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BridgeBurnTransactionCreated) (*types.Call, error) {
-	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnCreatedEvent.BurnTransactionID)
+func (bridge *Bridge) ProposeBurnTransaction(ctx context.Context, burnCreatedEvent substrate.BridgeBurnTransactionCreated) (*types.Call, error) {
+	burned, err := bridge.subClient.IsBurnedAlready(bridge.subClient.Id, burnCreatedEvent.BurnTransactionID)
 	if err != nil {
 		return nil, err
 	}
@@ -422,13 +347,13 @@ func (bridge *Bridge) proposeBurnTransaction(ctx context.Context, burnCreatedEve
 	if err != nil {
 		return nil, err
 	}
-	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
+	log.Debug().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Id, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
-func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) (*types.Call, error) {
-	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnReadyEvent.BurnTransactionID)
+func (bridge *Bridge) SubmitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) (*types.Call, error) {
+	burned, err := bridge.subClient.IsBurnedAlready(bridge.subClient.Id, burnReadyEvent.BurnTransactionID)
 
 	if err != nil {
 		return nil, err
@@ -439,7 +364,7 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return nil, errors.New("tx burned already")
 	}
 
-	burnTx, err := bridge.subClient.GetBurnTransaction(bridge.identity, burnReadyEvent.BurnTransactionID)
+	burnTx, err := bridge.subClient.GetBurnTransaction(bridge.subClient.Id, burnReadyEvent.BurnTransactionID)
 	if err != nil {
 		return nil, err
 	}
@@ -455,57 +380,7 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 		return nil, err
 	}
 
-	return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
-}
-
-func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {
-	chunks := strings.Split(memo, "_")
-	if len(chunks) != 2 {
-		// memo is not formatted correctly, issue a refund
-		return "", errors.New("memo text is not correctly formatted")
-	}
-
-	id, err := strconv.Atoi(chunks[1])
-	if err != nil {
-		return "", err
-	}
-
-	switch chunks[0] {
-	case "twin":
-		twin, err := bridge.subClient.GetTwin(uint32(id))
-		if err != nil {
-			return "", err
-		}
-		return twin.Account.String(), nil
-	case "farm":
-		farm, err := bridge.subClient.GetFarm(uint32(id))
-		if err != nil {
-			return "", err
-		}
-		twin, err := bridge.subClient.GetTwin(uint32(farm.TwinID))
-		if err != nil {
-			return "", err
-		}
-		return twin.Account.String(), nil
-	case "node":
-		node, err := bridge.subClient.GetNode(uint32(id))
-		if err != nil {
-			return "", err
-		}
-		twin, err := bridge.subClient.GetTwin(uint32(node.TwinID))
-		if err != nil {
-			return "", err
-		}
-		return twin.Account.String(), nil
-	case "entity":
-		entity, err := bridge.subClient.GetEntity(uint32(id))
-		if err != nil {
-			return "", err
-		}
-		return entity.Account.String(), nil
-	default:
-		return "", errors.New("grid type not supported")
-	}
+	return bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Id, uint64(burnReadyEvent.BurnTransactionID))
 }
 
 func (bridge *Bridge) Close() error {

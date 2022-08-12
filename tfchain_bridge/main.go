@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	flag "github.com/spf13/pflag"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
@@ -15,7 +16,7 @@ import (
 
 func main() {
 	var bridgeCfg pkg.BridgeConfig
-
+	var debug bool
 	flag.StringVar(&bridgeCfg.TfchainURL, "tfchainurl", "", "Tfchain websocket url")
 	flag.StringVar(&bridgeCfg.TfchainSeed, "tfchainseed", "", "Tfchain secret seed")
 	flag.StringVar(&bridgeCfg.StellarBridgeAccount, "bridgewallet", "", "stellar bridge wallet")
@@ -24,8 +25,16 @@ func main() {
 	flag.StringVar(&bridgeCfg.PersistencyFile, "persistency", "./node.json", "file where last seen blockheight and stellar account cursor is stored")
 	flag.BoolVar(&bridgeCfg.RescanBridgeAccount, "rescan", false, "if true is provided, we rescan the bridge stellar account and mint all transactions again")
 	flag.StringVar(&bridgeCfg.StellarHorizonUrl, "horizon", "", "stellar horizon url endpoint")
+	flag.BoolVar(&debug, "debug", false, "sets debug level log output")
 
 	flag.Parse()
+
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		log.Debug().Msg("debug mode enabled")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
