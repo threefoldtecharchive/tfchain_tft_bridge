@@ -15,7 +15,6 @@ type SubstrateClient struct {
 	*substrate.Substrate
 	Id         substrate.Identity
 	transactor Transactor
-	CallChan   chan *types.Call
 }
 
 type Transactor interface {
@@ -37,7 +36,6 @@ func NewSubstrateClient(url string, id substrate.Identity, transactor Transactor
 		cl,
 		id,
 		transactor,
-		make(chan *types.Call),
 	}, nil
 }
 
@@ -57,6 +55,7 @@ func (client *SubstrateClient) CallExtrinsic(call *types.Call) (*types.Hash, err
 		log.Error().Msgf("error occurred while submitting call %+v", err)
 		return nil, err
 	}
+	log.Debug().Msgf("call exectued with hash: %s", hash.Hex())
 
 	return &hash, nil
 }

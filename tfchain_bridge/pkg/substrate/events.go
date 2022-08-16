@@ -56,9 +56,13 @@ func (client *SubstrateClient) Handle(events *substrate.EventRecords) error {
 		call, err := client.transactor.SubmitRefundTransaction(context.Background(), e)
 		if err != nil {
 			log.Err(err).Msgf("error occured while processing refund transaction ready")
-			continue
+			return err
 		}
-		client.CallChan <- call
+		_, err = client.CallExtrinsic(call)
+		if err != nil {
+			log.Err(err).Msg("failed to make call")
+			return err
+		}
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
@@ -66,9 +70,13 @@ func (client *SubstrateClient) Handle(events *substrate.EventRecords) error {
 		call, err := client.transactor.ProposeBurnTransaction(context.Background(), e)
 		if err != nil {
 			log.Err(err).Msgf("error occured while processing burn transaction created")
-			continue
+			return err
 		}
-		client.CallChan <- call
+		_, err = client.CallExtrinsic(call)
+		if err != nil {
+			log.Err(err).Msg("failed to make call")
+			return err
+		}
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
@@ -76,9 +84,13 @@ func (client *SubstrateClient) Handle(events *substrate.EventRecords) error {
 		call, err := client.transactor.SubmitBurnTransaction(context.Background(), e)
 		if err != nil {
 			log.Err(err).Msgf("error occured while processing burn transaction ready")
-			continue
+			return err
 		}
-		client.CallChan <- call
+		_, err = client.CallExtrinsic(call)
+		if err != nil {
+			log.Err(err).Msg("failed to make call")
+			return err
+		}
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
@@ -86,9 +98,13 @@ func (client *SubstrateClient) Handle(events *substrate.EventRecords) error {
 		call, err := client.transactor.ProposeBurnTransaction(context.Background(), e)
 		if err != nil {
 			log.Err(err).Msgf("error occured while processing burn transaction expired")
-			continue
+			return err
 		}
-		client.CallChan <- call
+		_, err = client.CallExtrinsic(call)
+		if err != nil {
+			log.Err(err).Msg("failed to make call")
+			return err
+		}
 	}
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
@@ -96,9 +112,13 @@ func (client *SubstrateClient) Handle(events *substrate.EventRecords) error {
 		call, err := client.transactor.CreateRefund(context.Background(), e)
 		if err != nil {
 			log.Err(err).Msgf("error occured while processing refund transaction expired")
-			continue
+			return err
 		}
-		client.CallChan <- call
+		_, err = client.CallExtrinsic(call)
+		if err != nil {
+			log.Err(err).Msg("failed to make call")
+			return err
+		}
 	}
 
 	return nil

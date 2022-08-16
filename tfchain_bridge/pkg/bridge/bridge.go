@@ -150,18 +150,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		}
 	}()
 
-	go func() {
-		for call := range bridge.subClient.CallChan {
-			log.Debug().Msg("received call on channel, executing now")
-			hash, err := bridge.subClient.CallExtrinsic(call)
-			if err != nil {
-				log.Err(err).Msg("failed to make call")
-				quit <- struct{}{}
-			}
-			log.Info().Msgf("call exectued with hash: %s", hash.Hex())
-		}
-	}()
-
 	for {
 		select {
 		case <-quit:
@@ -244,7 +232,11 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return err
 	}
 
-	bridge.subClient.CallChan <- call
+	_, err = bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		log.Err(err).Msg("failed to make call")
+		return err
+	}
 
 	// save cursor
 	cursor := tx.PagingToken()
@@ -270,7 +262,11 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 		return nil
 	}
 
-	bridge.subClient.CallChan <- call
+	_, err = bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		log.Err(err).Msg("failed to make call")
+		return err
+	}
 
 	// save cursor
 	cursor := tx.PagingToken()
