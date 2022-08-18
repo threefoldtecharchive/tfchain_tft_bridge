@@ -24,7 +24,8 @@ pub async fn bridge_main() {
 
     let args = Args::from_args();
 
-    let _ = bridge::Bridge::new().await;
+    let b = bridge::Bridge::new().await;
 
+    b.get_events().await;
     println!("args: {:?}", args);
 }
