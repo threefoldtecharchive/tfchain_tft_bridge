@@ -506,6 +506,8 @@ github.com/threefoldtech/substrate-client v0.0.0-20220629072807-544d41e5b81a h1:
 github.com/threefoldtech/substrate-client v0.0.0-20220629072807-544d41e5b81a/go.mod h1:c84405+EkHv4YAAdMGyQuc0U29zmaVxzfFr7Cma1JEo=
 github.com/threefoldtech/substrate-client v0.0.0-20220808155028-1d74b8477705 h1:H8ubsvlHj43t1OdqxSNoARpnEej1VN5ancvyzgzyQhM=
 github.com/threefoldtech/substrate-client v0.0.0-20220808155028-1d74b8477705/go.mod h1:c84405+EkHv4YAAdMGyQuc0U29zmaVxzfFr7Cma1JEo=
+github.com/threefoldtech/substrate-client v0.0.0-20220818071246-a3caa849dffb h1:+eqi+nLemq9RZp7MPUvjV30ljW7GaWpm5EBCQ8C+ySo=
+github.com/threefoldtech/substrate-client v0.0.0-20220818071246-a3caa849dffb/go.mod h1:c84405+EkHv4YAAdMGyQuc0U29zmaVxzfFr7Cma1JEo=
 github.com/tinylib/msgp v1.0.2/go.mod h1:+d+yLhGm8mzTaHzB+wgMYrodPfmZrzkirds8fDWklFE=
 github.com/tklauser/go-sysconf v0.3.5/go.mod h1:MkWzOF4RMCshBAMXuhXJs64Rte09mITnppBXY/rYEFI=
 github.com/tklauser/go-sysconf v0.3.9 h1:JeUVdAOWhhxVcU6Eqr/ATFHgXk/mmiItdKeJPev3vTo=
