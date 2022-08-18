@@ -2,4 +2,5 @@
 
 members = [
     "pallet-tft-bridge",
+    "bridge"
 ]
