@@ -4,6 +4,11 @@ pub struct Bridge {
 }
 use subxt::{Config, PolkadotConfig};
 type Hash = <PolkadotConfig as Config>::Hash;
+use tfchain_client::runtimes::devnet::{
+    BurnTransactionReady, BurnTransactionSignatureAdded, MintTransactionProposed,
+};
+
+use futures::StreamExt;
 
 impl Bridge {
     pub async fn new() -> Bridge {
@@ -47,12 +52,42 @@ impl Bridge {
             }
         }
     }
-}
 
-// let mut transfer_events = api_client
-//     .api
-//     .events()
-//     .subscribe()
-//     .await?
-//     .filter_events::<(devnet::devnet::tft_bridge_module::events::MintTransactionProposed,)>(
-//     );
+    pub async fn subscribe_events(&self) {
+        let mut bridge_events = self
+            .tfchain_client
+            .api
+            .events()
+            .subscribe()
+            .await
+            .unwrap()
+            .filter_events::<(
+                MintTransactionProposed,
+                BurnTransactionSignatureAdded,
+                BurnTransactionReady,
+            )>();
+
+        while let Some(ev) = bridge_events.next().await {
+            match ev {
+                Ok(event_details) => {
+                    let block_hash = event_details.block_hash;
+                    let event = event_details.event;
+                    println!("Event at {:?}:", block_hash);
+
+                    if let (Some(mint), _, _) = &event {
+                        println!("  Mint event: {mint:?}");
+                    }
+
+                    if let (_, Some(burn_signature_added), _) = &event {
+                        println!("  Burn sig added event: {burn_signature_added:?}");
+                    }
+
+                    if let (_, _, Some(burn_ready)) = &event {
+                        println!("  Burn ready event: {burn_ready:?}");
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+}

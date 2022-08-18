@@ -26,6 +26,7 @@ pub async fn bridge_main() {
 
     let b = bridge::Bridge::new().await;
 
-    b.get_events().await;
+    // b.get_events().await;
+    b.subscribe_events().await;
     println!("args: {:?}", args);
 }
