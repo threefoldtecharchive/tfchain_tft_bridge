@@ -1,12 +1,15 @@
-use tfchain_client::client::{self, TfchainClient};
+use log::info;
+use tfchain_client::{
+    client::{self, Hash},
+    runtimes::devnet::devnet::tft_bridge_module::events::{
+        BurnTransactionCreated, BurnTransactionExpired, BurnTransactionReady,
+        RefundTransactionExpired, RefundTransactionReady,
+    },
+};
+
 pub struct Bridge {
     tfchain_client: client::TfchainClient,
 }
-use subxt::{Config, PolkadotConfig};
-type Hash = <PolkadotConfig as Config>::Hash;
-use tfchain_client::runtimes::devnet::{
-    BurnTransactionReady, BurnTransactionSignatureAdded, MintTransactionProposed,
-};
 
 use futures::StreamExt;
 
@@ -25,15 +28,15 @@ impl Bridge {
         Bridge { tfchain_client }
     }
 
-    pub async fn get_events(&self) {
-        let b = "7badc36b2ccc0bd8832f2a2c31c4d7fa6d96b2316ea6efd20a9765ce26ca9a66";
-        let x = hex::decode(b).unwrap();
-        let hash = Hash::from_slice(&x);
+    pub async fn get_events_for_block(&self, block_hash: Hash) {
+        // let b = "7badc36b2ccc0bd8832f2a2c31c4d7fa6d96b2316ea6efd20a9765ce26ca9a66";
+        // let x = hex::decode(b).unwrap();
+        // let hash = Hash::from_slice(&x);
         let events = self
             .tfchain_client
             .api
             .events()
-            .at(Some(hash))
+            .at(Some(block_hash))
             .await
             .unwrap();
 
@@ -62,28 +65,47 @@ impl Bridge {
             .await
             .unwrap()
             .filter_events::<(
-                MintTransactionProposed,
-                BurnTransactionSignatureAdded,
+                // RefundTransactionReady means a refund is ready to be made from the vault
+                RefundTransactionReady,
+                // RefundTransactionExpired means a refund from the vault is never picked up by peers
+                // We can try to initiate the singing of this refund again
+                RefundTransactionExpired,
+                // BurnTransactionCreated means a user wants to swap from Tfchain to his stellar account
+                BurnTransactionCreated,
+                // BurnTransactionReady means the swap is ready to be made from the vault
                 BurnTransactionReady,
+                // BurnTransactionExpired means the swap is never picked up by peers
+                // We can try to initiate the singing of this swap again
+                BurnTransactionExpired,
             )>();
+
+        info!("subscription for bridge events opened...");
 
         while let Some(ev) = bridge_events.next().await {
             match ev {
                 Ok(event_details) => {
                     let block_hash = event_details.block_hash;
+                    info!("Event found at block: {:?}", block_hash);
                     let event = event_details.event;
-                    println!("Event at {:?}:", block_hash);
 
-                    if let (Some(mint), _, _) = &event {
-                        println!("  Mint event: {mint:?}");
+                    if let (Some(refund_ready), _, _, _, _) = &event {
+                        info!("  refund ready event: {refund_ready:?}");
                     }
 
-                    if let (_, Some(burn_signature_added), _) = &event {
-                        println!("  Burn sig added event: {burn_signature_added:?}");
+                    if let (_, Some(refund_expired), _, _, _) = &event {
+                        info!("  refund expired event: {refund_expired:?}");
                     }
 
-                    if let (_, _, Some(burn_ready)) = &event {
-                        println!("  Burn ready event: {burn_ready:?}");
+                    if let (_, _, Some(burn_created), _, _) = &event {
+                        info!("  burn createad event: {burn_created:?}");
+                    }
+
+                    if let (_, _, _, Some(burn_ready), _) = &event {
+                        info!("  burn ready event: {burn_ready:?}");
+                    }
+
+                    if let (_, _, _, _, Some(burn_expired)) = &event {
+                        info!("  burn expired event: {burn_expired:?}");
                     }
                 }
                 _ => (),

@@ -2,6 +2,7 @@ use clap::{AppSettings, Parser};
 // use codec::Decode;
 // use futures::StreamExt;
 // use std::time::Duration;
+use log::info;
 
 pub mod bridge;
 
@@ -26,7 +27,9 @@ pub async fn bridge_main() {
 
     let b = bridge::Bridge::new().await;
 
-    // b.get_events().await;
+    info!("connection succesfully created");
+
     b.subscribe_events().await;
+
     println!("args: {:?}", args);
 }
