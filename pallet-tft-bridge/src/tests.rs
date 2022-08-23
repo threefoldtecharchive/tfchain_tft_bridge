@@ -1,4 +1,7 @@
-use crate::{mock::*, Error};
+use crate::{
+    mock::*, BurnTransactions, Error, ExecutedBurnTransactions, ExecutedMintTransactions,
+    ExecutedRefundTransactions, MintTransactions, RefundTransactions,
+};
 use frame_support::{
     assert_noop, assert_ok,
     traits::{OnFinalize, OnInitialize},
@@ -440,6 +443,48 @@ fn burn_fails_if_less_than_withdraw_fee_amount() {
     });
 }
 
+#[test]
+fn purge_transactions_storage_works() {
+    new_test_ext().execute_with(|| {
+        prepare_validators();
+        assert_eq!(transaction_storage_is_empty(), true);
+
+        assert_ok!(TFTBridgeModule::swap_to_stellar(
+            Origin::signed(bob()),
+            "some_stellar_address".as_bytes().to_vec(),
+            2000000000
+        ));
+
+        // 1. store a mint transaction
+        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
+            Origin::signed(alice()),
+            1,
+            "some_stellar_address".as_bytes().to_vec(),
+            1500000000,
+            "some_sig".as_bytes().to_vec(),
+            "some_stellar_pubkey".as_bytes().to_vec(),
+            1
+        ));
+
+        // 2. store a burn transaction
+        assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(
+            Origin::signed(alice()),
+            "some_tx".as_bytes().to_vec(),
+            bob(),
+            2
+        ));
+
+        // At this stage 1 mint transaction and 1 burn transaction are expected
+        assert_eq!(MintTransactions::<TestRuntime>::iter().count(), 1);
+        assert_eq!(BurnTransactions::<TestRuntime>::iter().count(), 1);
+        assert_eq!(transaction_storage_is_empty(), false);
+
+        // After purge transactions storage should be empty
+        assert_ok!(TFTBridgeModule::purge_stellar_transactions_storage());
+        assert_eq!(transaction_storage_is_empty(), true);
+    });
+}
+
 fn prepare_validators() {
     TFTBridgeModule::add_bridge_validator(RawOrigin::Root.into(), alice()).unwrap();
     TFTBridgeModule::add_bridge_validator(RawOrigin::Root.into(), bob()).unwrap();
@@ -457,4 +502,13 @@ fn run_to_block(n: u64) {
         System::set_block_number(System::block_number() + 1);
         TFTBridgeModule::on_initialize(System::block_number());
     }
+}
+
+fn transaction_storage_is_empty() -> bool {
+    MintTransactions::<TestRuntime>::iter().count() == 0
+        && ExecutedMintTransactions::<TestRuntime>::iter().count() == 0
+        && BurnTransactions::<TestRuntime>::iter().count() == 0
+        && ExecutedBurnTransactions::<TestRuntime>::iter().count() == 0
+        && RefundTransactions::<TestRuntime>::iter().count() == 0
+        && ExecutedRefundTransactions::<TestRuntime>::iter().count() == 0
 }
