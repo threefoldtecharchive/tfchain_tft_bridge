@@ -418,9 +418,9 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-        pub fn purge_storage(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+        pub fn purge_transactions_storage(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             T::RestrictedOrigin::ensure_origin(origin)?;
-            Self::purge_stellar_storage()
+            Self::purge_stellar_transactions_storage()
         }
     }
 }
@@ -857,7 +857,7 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    pub fn purge_stellar_storage() -> DispatchResultWithPostInfo {
+    pub fn purge_stellar_transactions_storage() -> DispatchResultWithPostInfo {
         let limit = None; // delete all values
         MintTransactions::<T>::remove_all(limit);
         ExecutedMintTransactions::<T>::remove_all(limit);
