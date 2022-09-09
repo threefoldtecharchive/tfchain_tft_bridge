@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,6 +173,32 @@ func (w *StellarWallet) CreateRefundAndReturnSignature(ctx context.Context, targ
 	signatures := txn.Signatures()
 
 	return base64.StdEncoding.EncodeToString(signatures[0].Signature), uint64(txn.SequenceNumber()), nil
+}
+
+func (w *StellarWallet) CheckAccount(account string) error {
+	acc, err := w.GetAccountDetails(account)
+	if err != nil {
+		return err
+	}
+
+	asset := w.GetAssetCodeAndIssuer()
+
+	for _, balance := range acc.Balances {
+		if balance.Code != asset[0] || balance.Issuer != asset[1] {
+			continue
+		}
+		limit, err := strconv.ParseFloat(balance.Limit, 64)
+		if err != nil {
+			//probably an empty string.
+			continue
+		}
+		if limit > 0 {
+			//valid address
+			return nil
+		}
+	}
+
+	return fmt.Errorf("addess has no trustline")
 }
 
 func (w *StellarWallet) generatePaymentOperation(amount uint64, destination string, sequenceNumber int64) (txnbuild.TransactionParams, error) {

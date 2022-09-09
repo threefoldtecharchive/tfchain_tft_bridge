@@ -169,7 +169,7 @@ pub mod pallet {
         MintCompleted(MintTransaction<T::AccountId, T::BlockNumber>),
         MintTransactionExpired(Vec<u8>, u64, T::AccountId),
         // Burn events
-        BurnTransactionCreated(u64, Vec<u8>, u64),
+        BurnTransactionCreated(u64, T::AccountId, Vec<u8>, u64),
         BurnTransactionProposed(u64, Vec<u8>, u64),
         BurnTransactionSignatureAdded(u64, StellarSignature),
         BurnTransactionReady(u64),
@@ -208,40 +208,40 @@ pub mod pallet {
     }
 
     #[pallet::genesis_config]
-	pub struct GenesisConfig<T: Config> {
-		pub validator_accounts: Option<Vec<T::AccountId>>,
+    pub struct GenesisConfig<T: Config> {
+        pub validator_accounts: Option<Vec<T::AccountId>>,
         pub fee_account: Option<T::AccountId>,
         pub withdraw_fee: u64,
         pub deposit_fee: u64,
-	}
+    }
 
     // The default value for the genesis config type.
-	#[cfg(feature = "std")]
-	impl<T: Config> Default for GenesisConfig<T> {
-		fn default() -> Self {
-			Self { 
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
                 validator_accounts: None,
                 fee_account: None,
                 withdraw_fee: Default::default(),
                 deposit_fee: Default::default(),
             }
-		}
-	}
+        }
+    }
 
-	#[pallet::genesis_build]
-	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
-		fn build(&self) {
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
             if let Some(validator_accounts) = &self.validator_accounts {
                 Validators::<T>::put(validator_accounts);
             }
 
             if let Some(ref fee_account) = self.fee_account {
-				FeeAccount::<T>::put(fee_account);
-			}
+                FeeAccount::<T>::put(fee_account);
+            }
             WithdrawFee::<T>::put(self.withdraw_fee);
             DepositFee::<T>::put(self.deposit_fee)
-		}
-	}
+        }
+    }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -491,6 +491,7 @@ impl<T: Config> Pallet<T> {
         let burn_amount_as_u64 = amount.saturated_into::<u64>() - withdraw_fee;
         Self::deposit_event(Event::BurnTransactionCreated(
             burn_id,
+            source,
             target_stellar_address.clone(),
             burn_amount_as_u64,
         ));
@@ -583,18 +584,22 @@ impl<T: Config> Pallet<T> {
             block: now,
             votes: 0,
         };
-        MintTransactions::<T>::insert(tx_id.clone(), &tx);
+        MintTransactions::<T>::insert(&tx_id, &tx);
+
+        Self::deposit_event(Event::MintTransactionProposed(
+            tx_id.clone(),
+            target,
+            amount,
+        ));
 
         // Vote already
-        Self::vote_stellar_mint_transaction(tx_id.clone())?;
-
-        Self::deposit_event(Event::MintTransactionProposed(tx_id, target, amount));
+        Self::vote_stellar_mint_transaction(tx_id)?;
 
         Ok(().into())
     }
 
     pub fn vote_stellar_mint_transaction(tx_id: Vec<u8>) -> DispatchResultWithPostInfo {
-        let mint_transaction = MintTransactions::<T>::get(tx_id.clone());
+        let mint_transaction = MintTransactions::<T>::get(&tx_id);
         match mint_transaction {
             Some(mut tx) => {
                 // increment amount of votes
