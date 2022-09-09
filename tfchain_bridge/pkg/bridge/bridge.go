@@ -417,8 +417,7 @@ func (bridge *Bridge) handleBurnCreated(ctx context.Context, burnCreatedEvent su
 		return nil, errors.New("tx burned already")
 	}
 
-	err = bridge.wallet.CheckAccount(string(burnCreatedEvent.Target))
-	if err != nil {
+	if err := bridge.wallet.CheckAccount(string(burnCreatedEvent.Target)); err != nil {
 		log.Info().Msgf("tx with id: %d is an invalid burn transaction, minting on chain again...", burnCreatedEvent.BurnTransactionID)
 		mintID := fmt.Sprintf("refund-%d", burnCreatedEvent.BurnTransactionID)
 		err := bridge.handleMint(big.NewInt(int64(burnCreatedEvent.Amount)), substrate.AccountID(burnCreatedEvent.Source), mintID)
@@ -440,8 +439,7 @@ func (bridge *Bridge) handleBurnCreated(ctx context.Context, burnCreatedEvent su
 }
 
 func (bridge *Bridge) handleBurnExpired(ctx context.Context, burnExpiredEvent substrate.BridgeBurnTransactionExpired) (*types.Call, error) {
-	err := bridge.wallet.CheckAccount(string(burnExpiredEvent.Target))
-	if err != nil {
+	if err := bridge.wallet.CheckAccount(string(burnExpiredEvent.Target)); err != nil {
 		log.Info().Msgf("tx with id: %d is an invalid burn transaction, setting burn as executed since we have no way to recover...", burnExpiredEvent.BurnTransactionID)
 		return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnExpiredEvent.BurnTransactionID))
 	}
@@ -495,7 +493,7 @@ func (bridge *Bridge) handleMint(amount *big.Int, target substrate.AccountID, mi
 	}
 
 	if minted {
-		log.Error().Msgf("transaction with id %s is already minted", mintID)
+		log.Debug().Msgf("transaction with id %s is already minted", mintID)
 		return errors.New("transaction already minted")
 	}
 

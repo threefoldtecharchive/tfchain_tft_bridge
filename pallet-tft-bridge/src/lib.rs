@@ -169,7 +169,7 @@ pub mod pallet {
         MintCompleted(MintTransaction<T::AccountId, T::BlockNumber>),
         MintTransactionExpired(Vec<u8>, u64, T::AccountId),
         // Burn events
-        BurnTransactionCreated(T::AccountId, u64, Vec<u8>, u64),
+        BurnTransactionCreated(u64, T::AccountId, Vec<u8>, u64),
         BurnTransactionProposed(u64, Vec<u8>, u64),
         BurnTransactionSignatureAdded(u64, StellarSignature),
         BurnTransactionReady(u64),
@@ -490,8 +490,8 @@ impl<T: Config> Pallet<T> {
 
         let burn_amount_as_u64 = amount.saturated_into::<u64>() - withdraw_fee;
         Self::deposit_event(Event::BurnTransactionCreated(
-            source,
             burn_id,
+            source,
             target_stellar_address.clone(),
             burn_amount_as_u64,
         ));
