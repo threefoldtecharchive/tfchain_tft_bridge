@@ -27,7 +27,6 @@ const (
 type Bridge struct {
 	wallet           *stellar.StellarWallet
 	subClient        *subpkg.SubstrateClient
-	identity         substrate.Identity
 	blockPersistency *pkg.ChainPersistency
 	mut              sync.Mutex
 	config           *pkg.BridgeConfig
@@ -35,12 +34,12 @@ type Bridge struct {
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
-	subClient, err := subpkg.NewSubstrateClient(cfg.TfchainURL)
+	tfchainIdentity, err := substrate.NewIdentityFromSr25519Phrase(cfg.TfchainSeed)
 	if err != nil {
 		return nil, err
 	}
 
-	tfchainIdentity, err := substrate.NewIdentityFromSr25519Phrase(cfg.TfchainSeed)
+	subClient, err := subpkg.NewSubstrateClient(cfg.TfchainURL, tfchainIdentity)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +85,6 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 
 	bridge := &Bridge{
 		subClient:        subClient,
-		identity:         tfchainIdentity,
 		blockPersistency: blockPersistency,
 		wallet:           wallet,
 		config:           &cfg,
@@ -102,16 +100,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return errors.Wrap(err, "failed to get block height from persistency")
 	}
 
-	cl, _, err := bridge.subClient.GetClient()
-	if err != nil {
-		return errors.Wrap(err, "failed to get client")
-	}
-
-	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
-	if err != nil {
-		return errors.Wrap(err, "failed to subscribe to finalized heads")
-	}
-
 	go func() {
 		log.Info().Msg("starting minting subscription...")
 		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
@@ -119,131 +107,51 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		}
 	}()
 
+	go func() {
+		log.Info().Msg("starting subscription to tfchain...")
+		if err := bridge.subClient.SubscribeTfchain(ctx); err != nil {
+			panic(err)
+		}
+	}()
+
 	for {
 		select {
-		case head := <-chainHeadsSub.Chan():
-			err := bridge.processEventsForHeight(uint32(head.Number))
-			if err != nil {
-				return err
+		case event := <-bridge.subClient.Events:
+			// TODO: handle return call and error
+			for _, withdrawCreatedEvent := range event.WithdrawCreatedEvents {
+				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
+				if err != nil {
+					log.Err(err).Msg("failed to handle withdraw created")
+				}
+			}
+			for _, withdrawExpiredEvent := range event.WithdrawExpiredEvents {
+				err := bridge.handleWithdrawExpired(ctx, withdrawExpiredEvent)
+				if err != nil {
+					log.Err(err).Msg("failed to handle withdraw created")
+				}
+			}
+			for _, withdawReadyEvent := range event.WithdrawReadyEvents {
+				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
+				if err != nil {
+					log.Err(err).Msg("failed to handle withdraw created")
+				}
+			}
+			for _, refundReadyEvent := range event.RefundReadyEvents {
+				err := bridge.handleRefundReady(ctx, refundReadyEvent)
+				if err != nil {
+					log.Err(err).Msg("failed to handle withdraw created")
+				}
+			}
+			for _, refundExpiredEvent := range event.RefundExpiredEvents {
+				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
+				if err != nil {
+					log.Err(err).Msg("failed to handle withdraw created")
+				}
 			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
-}
-
-func (bridge *Bridge) processEventsForHeight(height uint32) error {
-	log.Info().Msgf("fetching events for blockheight %d", height)
-	records, err := bridge.subClient.GetEventsForBlock(height)
-	if err != nil {
-		log.Info().Msgf("failed to decode block with height %d", height)
-		return err
-	}
-
-	err = bridge.processEventRecords(records)
-	if err != nil {
-		if err == substrate.ErrFailedToDecode {
-			log.Err(err).Msgf("failed to decode events at block %d", height)
-			return err
-		} else {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (bridge *Bridge) processEventRecords(events *substrate.EventRecords) error {
-	for _, e := range events.TFTBridgeModule_RefundTransactionReady {
-		log.Info().Msg("found refund transaction ready event")
-		call, err := bridge.submitRefundTransaction(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("submit refund call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction created event")
-		call, err := bridge.handleBurnCreated(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction ready event")
-		call, err := bridge.submitBurnTransaction(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("submit burn call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction expired event")
-		call, err := bridge.handleBurnExpired(context.Background(), e)
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
-	}
-
-	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
-		log.Info().Msgf("found expired refund transaction")
-		call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
-		if err != nil {
-			log.Info().Msgf("error occured: +%s", err.Error())
-			continue
-		}
-		hash, err := bridge.callExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
-	}
-
-	return nil
-}
-
-func (bridge *Bridge) callExtrinsic(call *types.Call) (*types.Hash, error) {
-	bridge.mut.Lock()
-	defer bridge.mut.Unlock()
-
-	cl, meta, err := bridge.subClient.GetClient()
-	if err != nil {
-		return nil, err
-	}
-
-	log.Info().Msgf("call ready to be submitted")
-	hash, err := bridge.subClient.Substrate.Call(cl, meta, bridge.identity, *call)
-	if err != nil {
-		log.Error().Msgf("error occurred while submitting call %+v", err)
-		return nil, err
-	}
-
-	return &hash, nil
 }
 
 // mint handler for stellar
@@ -283,7 +191,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	}
 
 	// TODO check if we already minted for this txid
-	minted, err := bridge.subClient.IsMintedAlready(bridge.identity, tx.Hash)
+	minted, err := bridge.subClient.IsMintedAlready(bridge.subClient.Identity, tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
 		return err
 	}
@@ -312,12 +220,12 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return err
 	}
 
-	call, err := bridge.subClient.ProposeOrVoteMintTransaction(bridge.identity, tx.Hash, accountID, depositedAmount)
+	call, err := bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Identity, tx.Hash, accountID, depositedAmount)
 	if err != nil {
 		return err
 	}
 
-	hash, err := bridge.callExtrinsic(call)
+	hash, err := bridge.subClient.CallExtrinsic(call)
 	if err != nil {
 		return err
 	}
@@ -337,20 +245,14 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 
 // refund handler for stellar
 func (bridge *Bridge) refund(ctx context.Context, destination string, amount int64, tx hProtocol.Transaction) error {
-	call, err := bridge.createRefund(ctx, destination, amount, tx.Hash)
+	err := bridge.handleRefundExpired(ctx, subpkg.RefundTransactionExpiredEvent{
+		Hash:   tx.Hash,
+		Amount: uint64(amount),
+		Target: destination,
+	})
 	if err != nil {
 		return err
 	}
-
-	if call == nil {
-		return nil
-	}
-
-	hash, err := bridge.callExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
 
 	// save cursor
 	cursor := tx.PagingToken()
@@ -363,131 +265,194 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	return nil
 }
 
-func (bridge *Bridge) createRefund(ctx context.Context, destination string, amount int64, txHash string) (*types.Call, error) {
-	refunded, err := bridge.subClient.IsRefundedAlready(bridge.identity, txHash)
+func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEvent subpkg.RefundTransactionExpiredEvent) error {
+	refunded, err := bridge.subClient.IsRefundedAlready(bridge.subClient.Identity, refundExpiredEvent.Hash)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if refunded {
-		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", txHash)
-		return nil, pkg.ErrTransactionAlreadyRefunded
+		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", refundExpiredEvent.Hash)
+		return pkg.ErrTransactionAlreadyRefunded
 	}
 
-	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, destination, uint64(amount), txHash)
+	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, refundExpiredEvent.Target, refundExpiredEvent.Amount, refundExpiredEvent.Hash)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.identity, txHash, destination, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	call, err := bridge.subClient.CreateRefundTransactionOrAddSig(bridge.subClient.Identity, refundExpiredEvent.Hash, refundExpiredEvent.Target, int64(refundExpiredEvent.Amount), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	if err != nil {
+		return err
+	}
+	hash, err := bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("call submitted with hash %s", hash)
+	return nil
 }
 
-func (bridge *Bridge) submitRefundTransaction(ctx context.Context, refundReadyEvent substrate.RefundTransactionReady) (*types.Call, error) {
-	refunded, err := bridge.subClient.IsRefundedAlready(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent subpkg.RefundTransactionReadyEvent) error {
+	refunded, err := bridge.subClient.IsRefundedAlready(bridge.subClient.Identity, refundReadyEvent.Hash)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if refunded {
-		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", string(refundReadyEvent.RefundTransactionHash))
-		return nil, pkg.ErrTransactionAlreadyRefunded
+		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", refundReadyEvent.Hash)
+		return pkg.ErrTransactionAlreadyRefunded
 	}
 
-	refund, err := bridge.subClient.GetRefundTransaction(bridge.identity, string(refundReadyEvent.RefundTransactionHash))
+	refund, err := bridge.subClient.GetRefundTransaction(bridge.subClient.Identity, refundReadyEvent.Hash)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, refund.Signatures, int64(refund.SequenceNumber))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return bridge.subClient.SetRefundTransactionExecuted(bridge.identity, refund.TxHash)
+	call, err := bridge.subClient.SetRefundTransactionExecuted(bridge.subClient.Identity, refund.TxHash)
+	if err != nil {
+		return err
+	}
+	hash, err := bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("call submitted with hash %s", hash)
+	return nil
 }
 
-func (bridge *Bridge) handleBurnCreated(ctx context.Context, burnCreatedEvent substrate.BridgeBurnTransactionCreated) (*types.Call, error) {
-	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnCreatedEvent.BurnTransactionID)
+func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg.WithdrawCreatedEvent) error {
+	burned, err := bridge.subClient.IsBurnedAlready(bridge.subClient.Identity, types.U64(withdraw.ID))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if burned {
-		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnCreatedEvent.BurnTransactionID)
-		return nil, errors.New("tx burned already")
+		log.Info().Msgf("tx with id: %d is burned already, skipping...", withdraw.ID)
+		return errors.New("tx burned already")
 	}
 
-	if err := bridge.wallet.CheckAccount(string(burnCreatedEvent.Target)); err != nil {
-		log.Info().Msgf("tx with id: %d is an invalid burn transaction, minting on chain again...", burnCreatedEvent.BurnTransactionID)
-		mintID := fmt.Sprintf("refund-%d", burnCreatedEvent.BurnTransactionID)
-		err := bridge.handleMint(big.NewInt(int64(burnCreatedEvent.Amount)), substrate.AccountID(burnCreatedEvent.Source), mintID)
+	if err := bridge.wallet.CheckAccount(withdraw.Target); err != nil {
+		log.Info().Msgf("tx with id: %d is an invalid burn transaction, minting on chain again...", withdraw.ID)
+		mintID := fmt.Sprintf("refund-%d", withdraw.ID)
+		err := bridge.handleMint(big.NewInt(int64(withdraw.Amount)), substrate.AccountID(withdraw.Source), mintID)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		log.Info().Msgf("setting invalid burn transaction (%d) as executed", burnCreatedEvent.BurnTransactionID)
-		return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnCreatedEvent.BurnTransactionID))
+		log.Info().Msgf("setting invalid burn transaction (%d) as executed", withdraw.ID)
+		call, err := bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdraw.ID)
+		if err != nil {
+			return err
+		}
+		hash, err := bridge.subClient.CallExtrinsic(call)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("call submitted with hash %s", hash)
+		return nil
 	}
 
-	amount := big.NewInt(int64(burnCreatedEvent.Amount))
-	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, string(burnCreatedEvent.Target), amount.Uint64(), uint64(burnCreatedEvent.BurnTransactionID))
+	amount := big.NewInt(int64(withdraw.Amount))
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, withdraw.Target, amount.Uint64(), withdraw.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.identity, uint64(burnCreatedEvent.BurnTransactionID), string(burnCreatedEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	call, err := bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdraw.ID, withdraw.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	if err != nil {
+		return err
+	}
+	hash, err := bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("call submitted with hash %s", hash)
+
+	return nil
 }
 
-func (bridge *Bridge) handleBurnExpired(ctx context.Context, burnExpiredEvent substrate.BridgeBurnTransactionExpired) (*types.Call, error) {
-	if err := bridge.wallet.CheckAccount(string(burnExpiredEvent.Target)); err != nil {
-		log.Info().Msgf("tx with id: %d is an invalid burn transaction, setting burn as executed since we have no way to recover...", burnExpiredEvent.BurnTransactionID)
-		return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnExpiredEvent.BurnTransactionID))
+func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired subpkg.WithdrawExpiredEvent) error {
+	if err := bridge.wallet.CheckAccount(withdrawExpired.Target); err != nil {
+		log.Info().Msgf("tx with id: %d is an invalid burn transaction, setting burn as executed since we have no way to recover...", withdrawExpired.ID)
+		call, err := bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawExpired.ID)
+		if err != nil {
+			return err
+		}
+		hash, err := bridge.subClient.CallExtrinsic(call)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("call submitted with hash %s", hash)
+		return nil
 	}
 
-	amount := big.NewInt(int64(burnExpiredEvent.Amount))
-	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, string(burnExpiredEvent.Target), amount.Uint64(), uint64(burnExpiredEvent.BurnTransactionID))
+	amount := big.NewInt(int64(withdrawExpired.Amount))
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, withdrawExpired.Target, amount.Uint64(), withdrawExpired.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.identity, uint64(burnExpiredEvent.BurnTransactionID), string(burnExpiredEvent.Target), amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	call, err := bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdrawExpired.ID, withdrawExpired.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	if err != nil {
+		return err
+	}
+	hash, err := bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("call submitted with hash %s", hash)
+	return nil
 }
 
-func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent substrate.BurnTransactionReady) (*types.Call, error) {
-	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnReadyEvent.BurnTransactionID)
-
+func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady subpkg.WithdrawReadyEvent) error {
+	burned, err := bridge.subClient.IsBurnedAlready(bridge.subClient.Identity, types.U64(withdrawReady.ID))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if burned {
-		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnReadyEvent.BurnTransactionID)
-		return nil, errors.New("tx burned already")
+		log.Info().Msgf("tx with id: %d is burned already, skipping...", withdrawReady.ID)
+		return errors.New("tx burned already")
 	}
 
-	burnTx, err := bridge.subClient.GetBurnTransaction(bridge.identity, burnReadyEvent.BurnTransactionID)
+	burnTx, err := bridge.subClient.GetBurnTransaction(bridge.subClient.Identity, types.U64(withdrawReady.ID))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if len(burnTx.Signatures) == 0 {
 		log.Info().Msg("found 0 signatures, aborting")
-		return nil, errors.New("no signatures")
+		return errors.New("no signatures")
 	}
 
 	// todo add memo hash
 	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, burnTx.Target, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
+	call, err := bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawReady.ID)
+	if err != nil {
+		return err
+	}
+	hash, err := bridge.subClient.CallExtrinsic(call)
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("call submitted with hash %s", hash)
+	return nil
 }
 
 func (bridge *Bridge) handleMint(amount *big.Int, target substrate.AccountID, mintID string) error {
 	// TODO check if we already minted for this txid
-	minted, err := bridge.subClient.IsMintedAlready(bridge.identity, mintID)
+	minted, err := bridge.subClient.IsMintedAlready(bridge.subClient.Identity, mintID)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
 		return err
 	}
@@ -497,12 +462,12 @@ func (bridge *Bridge) handleMint(amount *big.Int, target substrate.AccountID, mi
 		return errors.New("transaction already minted")
 	}
 
-	call, err := bridge.subClient.ProposeOrVoteMintTransaction(bridge.identity, mintID, target, amount)
+	call, err := bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Identity, mintID, target, amount)
 	if err != nil {
 		return err
 	}
 
-	hash, err := bridge.callExtrinsic(call)
+	hash, err := bridge.subClient.CallExtrinsic(call)
 	if err != nil {
 		return err
 	}
