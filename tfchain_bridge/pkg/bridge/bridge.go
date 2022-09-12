@@ -34,17 +34,12 @@ type Bridge struct {
 }
 
 func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
-	tfchainIdentity, err := substrate.NewIdentityFromSr25519Phrase(cfg.TfchainSeed)
+	subClient, err := subpkg.NewSubstrateClient(cfg.TfchainURL, cfg.TfchainSeed)
 	if err != nil {
 		return nil, err
 	}
 
-	subClient, err := subpkg.NewSubstrateClient(cfg.TfchainURL, tfchainIdentity)
-	if err != nil {
-		return nil, err
-	}
-
-	isValidator, err := subClient.IsValidator(tfchainIdentity)
+	isValidator, err := subClient.IsValidator(subClient.Identity)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +73,7 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 	}
 
 	// fetch the configured depositfee
-	depositFee, err := subClient.GetDepositFee(tfchainIdentity)
+	depositFee, err := subClient.GetDepositFee(subClient.Identity)
 	if err != nil {
 		return nil, err
 	}
@@ -95,12 +90,11 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 }
 
 func (bridge *Bridge) Start(ctx context.Context) error {
-	height, err := bridge.blockPersistency.GetHeight()
-	if err != nil {
-		return errors.Wrap(err, "failed to get block height from persistency")
-	}
-
 	go func() {
+		height, err := bridge.blockPersistency.GetHeight()
+		if err != nil {
+			panic(errors.Wrap(err, "failed to get block height from persistency"))
+		}
 		log.Info().Msg("starting minting subscription...")
 		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
 			panic(err)
@@ -116,33 +110,32 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 
 	for {
 		select {
-		case event := <-bridge.subClient.Events:
-			// TODO: handle return call and error
-			for _, withdrawCreatedEvent := range event.WithdrawCreatedEvents {
+		case events := <-bridge.subClient.Chan():
+			for _, withdrawCreatedEvent := range events.WithdrawCreatedEvents {
 				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, withdrawExpiredEvent := range event.WithdrawExpiredEvents {
+			for _, withdrawExpiredEvent := range events.WithdrawExpiredEvents {
 				err := bridge.handleWithdrawExpired(ctx, withdrawExpiredEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, withdawReadyEvent := range event.WithdrawReadyEvents {
+			for _, withdawReadyEvent := range events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, refundReadyEvent := range event.RefundReadyEvents {
+			for _, refundReadyEvent := range events.RefundReadyEvents {
 				err := bridge.handleRefundReady(ctx, refundReadyEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, refundExpiredEvent := range event.RefundExpiredEvents {
+			for _, refundExpiredEvent := range events.RefundExpiredEvents {
 				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")

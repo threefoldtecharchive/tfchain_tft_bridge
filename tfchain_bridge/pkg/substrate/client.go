@@ -27,20 +27,24 @@ type Versioned struct {
 type SubstrateClient struct {
 	*substrate.Substrate
 	Identity substrate.Identity
-	Events   chan Events
+	events   chan Events
 }
 
 // NewSubstrate creates a substrate client
-func NewSubstrateClient(url string, identity substrate.Identity) (*SubstrateClient, error) {
+func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 	mngr := substrate.NewManager(url)
 	cl, err := mngr.Substrate()
+	if err != nil {
+		return nil, err
+	}
+	tfchainIdentity, err := substrate.NewIdentityFromSr25519Phrase(seed)
 	if err != nil {
 		return nil, err
 	}
 
 	return &SubstrateClient{
 		cl,
-		identity,
+		tfchainIdentity,
 		make(chan Events),
 	}, nil
 }
@@ -64,6 +68,7 @@ func (client *SubstrateClient) SubscribeTfchain(ctx context.Context) error {
 				return err
 			}
 		case <-ctx.Done():
+			chainHeadsSub.Unsubscribe()
 			return ctx.Err()
 		}
 	}
@@ -83,4 +88,8 @@ func (client *SubstrateClient) CallExtrinsic(call *types.Call) (*types.Hash, err
 	}
 
 	return &hash, nil
+}
+
+func (client *SubstrateClient) Chan() chan Events {
+	return client.events
 }

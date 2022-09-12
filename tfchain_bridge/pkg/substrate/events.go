@@ -104,16 +104,6 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 		refundTransactionReadyEvents = append(refundTransactionReadyEvents, RefundTransactionReadyEvent{
 			Hash: string(e.RefundTransactionHash),
 		})
-		// call, err := bridge.submitRefundTransaction(context.Background(), e)
-		// if err != nil {
-		// 	log.Info().Msgf("error occured: +%s", err.Error())
-		// 	continue
-		// }
-		// hash, err := bridge.callExtrinsic(call)
-		// if err != nil {
-		// 	return err
-		// }
-		// log.Info().Msgf("submit refund call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
@@ -123,16 +113,6 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 			Target: string(e.Target),
 			Amount: uint64(e.Amount),
 		})
-		// call, err := bridge.createRefund(context.Background(), string(e.Target), int64(e.Amount), string(e.RefundTransactionHash))
-		// if err != nil {
-		// 	log.Info().Msgf("error occured: +%s", err.Error())
-		// 	continue
-		// }
-		// hash, err := bridge.callExtrinsic(call)
-		// if err != nil {
-		// 	return err
-		// }
-		// log.Info().Msgf("refund call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
@@ -144,16 +124,6 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 			Target: string(e.Target),
 			Amount: uint64(e.Amount),
 		})
-		// call, err := bridge.handleBurnCreated(context.Background(), e)
-		// if err != nil {
-		// 	log.Info().Msgf("error occured: +%s", err.Error())
-		// 	continue
-		// }
-		// hash, err := bridge.callExtrinsic(call)
-		// if err != nil {
-		// 	return err
-		// }
-		// log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
@@ -161,16 +131,6 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 		withdrawReadyEvents = append(withdrawReadyEvents, WithdrawReadyEvent{
 			ID: uint64(e.BurnTransactionID),
 		})
-		// call, err := bridge.submitBurnTransaction(context.Background(), e)
-		// if err != nil {
-		// 	log.Info().Msgf("error occured: +%s", err.Error())
-		// 	continue
-		// }
-		// hash, err := bridge.callExtrinsic(call)
-		// if err != nil {
-		// 	return err
-		// }
-		// log.Info().Msgf("submit burn call submitted with hash: %s", hash.Hex())
 	}
 
 	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
@@ -180,19 +140,9 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 			Target: string(e.Target),
 			Amount: uint64(e.Amount),
 		})
-		// call, err := bridge.handleBurnExpired(context.Background(), e)
-		// if err != nil {
-		// 	log.Info().Msgf("error occured: +%s", err.Error())
-		// 	continue
-		// }
-		// hash, err := bridge.callExtrinsic(call)
-		// if err != nil {
-		// 	return err
-		// }
-		// log.Info().Msgf("propose burn call submitted with hash: %s", hash.Hex())
 	}
 
-	client.Events <- Events{
+	client.events <- Events{
 		WithdrawCreatedEvents: withdrawCreatedEvents,
 		WithdrawReadyEvents:   withdrawReadyEvents,
 		WithdrawExpiredEvents: withdrawExpiredEvents,
