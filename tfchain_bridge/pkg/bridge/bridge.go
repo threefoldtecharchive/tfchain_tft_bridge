@@ -96,20 +96,20 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		return errors.Wrap(err, "failed to get block height from persistency")
 	}
 	log.Info().Msg("starting stellar subscription...")
-	mintChan, err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, height.StellarCursor)
+	stellarSub, err := bridge.wallet.StreamBridgeStellarTransactions(ctx, height.StellarCursor)
 	if err != nil {
 		return errors.Wrap(err, "failed to monitor bridge account")
 	}
 
 	log.Info().Msg("starting tfchain subscription...")
-	tfchainBridgeSub, err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx)
+	tfchainSub, err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to subscribe to tfchain")
 	}
 
 	for {
 		select {
-		case data := <-tfchainBridgeSub:
+		case data := <-tfchainSub:
 			if data.Err != nil {
 				return errors.Wrap(err, "failed to process events")
 			}
@@ -143,23 +143,29 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 					return errors.Wrap(err, "failed to handle refund expired")
 				}
 			}
-		case mintEvent := <-mintChan:
-			err := bridge.mint(mintEvent.Senders, mintEvent.Tx)
-			for err != nil {
-				log.Err(err).Msg("Error occured while minting")
-				if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
-					continue
-				}
-
-				select {
-				case <-ctx.Done():
-					return err
-				case <-time.After(10 * time.Second):
-					err = bridge.mint(mintEvent.Senders, mintEvent.Tx)
-				}
+		case data := <-stellarSub:
+			if data.Err != nil {
+				return errors.Wrap(err, "failed to get mint events")
 			}
-			if err != nil {
-				return errors.Wrap(err, "failed to handle mint")
+
+			for _, mEvent := range data.Events {
+				err := bridge.mint(mEvent.Senders, mEvent.Tx)
+				for err != nil {
+					log.Err(err).Msg("Error occured while minting")
+					if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
+						continue
+					}
+
+					select {
+					case <-ctx.Done():
+						return err
+					case <-time.After(10 * time.Second):
+						err = bridge.mint(mEvent.Senders, mEvent.Tx)
+					}
+				}
+				if err != nil {
+					return errors.Wrap(err, "failed to handle mint")
+				}
 			}
 		case <-ctx.Done():
 			return ctx.Err()
