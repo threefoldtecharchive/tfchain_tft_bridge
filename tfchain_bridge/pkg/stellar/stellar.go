@@ -306,16 +306,16 @@ func (w *StellarWallet) GetKeypair() *keypair.Full {
 	return w.keypair
 }
 
-// mint handler
-type mint func(map[string]*big.Int, hProtocol.Transaction) error
-
-// // refund handler
-// type refund func(context.Context, string, int64, string) error
+type MintEvent struct {
+	Senders map[string]*big.Int
+	Tx      hProtocol.Transaction
+	Error   error
+}
 
 // MonitorBridgeAccountAndMint is a blocking function that keeps monitoring
-// the bridge account on the Stellar network for new transactions and calls the
-// mint function when a deposit is made
-func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn mint, stellarCursor string) error {
+// the bridge account on the Stellar network for new transactions and pushes a mint event on the channel if it sees one
+func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, stellarCursor string) (chan MintEvent, error) {
+	mintChan := make(chan MintEvent)
 	transactionHandler := func(tx hProtocol.Transaction) {
 		if !tx.Successful {
 			return
@@ -375,24 +375,23 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 				}
 			}
 
-			err = mintFn(senders, tx)
-			for err != nil {
-				log.Err(err).Msg("Error occured while minting")
-				if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
-					return
-				}
-
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(10 * time.Second):
-					err = mintFn(senders, tx)
-				}
+			mintChan <- MintEvent{
+				Senders: senders,
+				Tx:      tx,
+				Error:   nil,
 			}
-
 		}
 	}
-	return w.StreamBridgeStellarTransactions(ctx, stellarCursor, transactionHandler)
+	go func() {
+		err := w.StreamBridgeStellarTransactions(ctx, stellarCursor, transactionHandler)
+		if err != nil {
+			mintChan <- MintEvent{
+				Error: err,
+			}
+		}
+	}()
+
+	return mintChan, nil
 }
 
 // GetAccountDetails gets account details based an a Stellar address
@@ -423,7 +422,7 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 
 	for {
 		if ctx.Err() != nil {
-			return nil
+			return ctx.Err()
 		}
 
 		response, err := client.Transactions(opRequest)

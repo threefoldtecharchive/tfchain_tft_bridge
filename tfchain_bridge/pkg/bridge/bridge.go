@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/pkg/errors"
@@ -90,57 +91,75 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 }
 
 func (bridge *Bridge) Start(ctx context.Context) error {
-	go func() {
-		height, err := bridge.blockPersistency.GetHeight()
-		if err != nil {
-			panic(errors.Wrap(err, "failed to get block height from persistency"))
-		}
-		log.Info().Msg("starting stellar subscription...")
-		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
-			panic(err)
-		}
-	}()
+	height, err := bridge.blockPersistency.GetHeight()
+	if err != nil {
+		return errors.Wrap(err, "failed to get block height from persistency")
+	}
+	log.Info().Msg("starting stellar subscription...")
+	mintChan, err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, height.StellarCursor)
+	if err != nil {
+		return errors.Wrap(err, "failed to monitor bridge account")
+	}
 
 	log.Info().Msg("starting tfchain subscription...")
-	eventSub, err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx)
+	tfchainBridgeSub, err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to subscribe to tfchain")
 	}
+
 	for {
 		select {
-		case data := <-eventSub:
+		case data := <-tfchainBridgeSub:
 			if data.Err != nil {
 				return errors.Wrap(err, "failed to process events")
 			}
 			for _, withdrawCreatedEvent := range data.Events.WithdrawCreatedEvents {
 				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
 				if err != nil {
-					log.Err(err).Msg("failed to handle withdraw created")
+					return errors.Wrap(err, "failed to handle withdraw created")
 				}
 			}
 			for _, withdrawExpiredEvent := range data.Events.WithdrawExpiredEvents {
 				err := bridge.handleWithdrawExpired(ctx, withdrawExpiredEvent)
 				if err != nil {
-					log.Err(err).Msg("failed to handle withdraw created")
+					return errors.Wrap(err, "failed to handle withdraw expired")
 				}
 			}
 			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
 				if err != nil {
-					log.Err(err).Msg("failed to handle withdraw created")
+					return errors.Wrap(err, "failed to handle withdraw ready")
 				}
 			}
 			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
 				err := bridge.handleRefundReady(ctx, refundReadyEvent)
 				if err != nil {
-					log.Err(err).Msg("failed to handle withdraw created")
+					return errors.Wrap(err, "failed to handle refund ready")
 				}
 			}
 			for _, refundExpiredEvent := range data.Events.RefundExpiredEvents {
 				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
 				if err != nil {
-					log.Err(err).Msg("failed to handle withdraw created")
+					return errors.Wrap(err, "failed to handle refund expired")
 				}
+			}
+		case mintEvent := <-mintChan:
+			err := bridge.mint(mintEvent.Senders, mintEvent.Tx)
+			for err != nil {
+				log.Err(err).Msg("Error occured while minting")
+				if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
+					continue
+				}
+
+				select {
+				case <-ctx.Done():
+					return err
+				case <-time.After(10 * time.Second):
+					err = bridge.mint(mintEvent.Senders, mintEvent.Tx)
+				}
+			}
+			if err != nil {
+				return errors.Wrap(err, "failed to handle mint")
 			}
 		case <-ctx.Done():
 			return ctx.Err()
