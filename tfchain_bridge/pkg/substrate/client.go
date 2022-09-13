@@ -27,7 +27,6 @@ type Versioned struct {
 type SubstrateClient struct {
 	*substrate.Substrate
 	Identity substrate.Identity
-	events   chan Events
 }
 
 // NewSubstrate creates a substrate client
@@ -45,7 +44,6 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 	return &SubstrateClient{
 		cl,
 		tfchainIdentity,
-		make(chan Events),
 	}, nil
 }
 
