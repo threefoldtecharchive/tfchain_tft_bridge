@@ -486,7 +486,7 @@ impl<T: Config> Pallet<T> {
         let value = T::Currency::withdraw(
             &source,
             amount,
-            WithdrawReasons::all(),
+            WithdrawReasons::TRANSFER,
             ExistenceRequirement::KeepAlive,
         )?;
         T::Burn::on_unbalanced(value);
