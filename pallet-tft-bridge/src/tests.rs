@@ -128,7 +128,9 @@ fn burn_approval_retries_works() {
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
             Origin::signed(bob()),
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             2000000000
         ));
 
@@ -140,7 +142,9 @@ fn burn_approval_retries_works() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "some_sig".as_bytes().to_vec(),
             "some_stellar_pubkey".as_bytes().to_vec(),
@@ -149,7 +153,9 @@ fn burn_approval_retries_works() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(bob()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "bob_sig".as_bytes().to_vec(),
             "bob_stellar_pubkey".as_bytes().to_vec(),
@@ -161,7 +167,9 @@ fn burn_approval_retries_works() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(eve()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "some_other_eve_sig".as_bytes().to_vec(),
             "eve_stellar_pubkey".as_bytes().to_vec(),
@@ -189,7 +197,7 @@ fn burn_approval_retries_works() {
         // let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> = vec![
         //     RawEvent::BurnTransactionExpired(
         //         1,
-        //         "some_stellar_address".as_bytes().to_vec(),
+        //         "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z".as_bytes().to_vec(),
         //         1500000000,
         //     ),
         //     RawEvent::BurnTransactionReady(1),
@@ -204,20 +212,51 @@ fn burn_approval_retries_works() {
 }
 
 #[test]
+fn swap_to_stellar_valid_address_workds() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(TFTBridgeModule::swap_to_stellar(
+            Origin::signed(bob()),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
+            2000000000
+        ));
+    });
+}
+
+#[test]
+fn swap_to_stellar_non_valid_address_fails() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            TFTBridgeModule::swap_to_stellar(
+                Origin::signed(bob()),
+                "some_invalid_text".as_bytes().to_vec(),
+                2000000000
+            ),
+            Error::<TestRuntime>::InvalidStellarPublicKey
+        );
+    });
+}
+
+#[test]
 fn proposing_burn_transaction_works() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
             Origin::signed(bob()),
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             2000000000
         ));
 
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "some_sig".as_bytes().to_vec(),
             "some_stellar_pubkey".as_bytes().to_vec(),
@@ -235,7 +274,9 @@ fn proposing_burn_transaction_if_no_burn_was_made_fails() {
             TFTBridgeModule::propose_burn_transaction_or_add_sig(
                 Origin::signed(alice()),
                 1,
-                "some_stellar_address".as_bytes().to_vec(),
+                "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                    .as_bytes()
+                    .to_vec(),
                 2,
                 "some_sig".as_bytes().to_vec(),
                 "some_stellar_pubkey".as_bytes().to_vec(),
@@ -253,7 +294,9 @@ fn proposing_burn_transaction_without_being_validator_fails() {
             TFTBridgeModule::propose_burn_transaction_or_add_sig(
                 Origin::signed(alice()),
                 1,
-                "some_stellar_address".as_bytes().to_vec(),
+                "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                    .as_bytes()
+                    .to_vec(),
                 2,
                 "some_sig".as_bytes().to_vec(),
                 "some_stellar_pubkey".as_bytes().to_vec(),
@@ -276,7 +319,9 @@ fn cannot_burn_more_than_balance_plus_fee() {
         assert_noop!(
             TFTBridgeModule::swap_to_stellar(
                 Origin::signed(bob()),
-                "some_stellar_address".as_bytes().to_vec(),
+                "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                    .as_bytes()
+                    .to_vec(),
                 2500000001
             ),
             Error::<TestRuntime>::NotEnoughBalanceToSwap
@@ -295,7 +340,9 @@ fn burn_flow() {
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
             Origin::signed(bob()),
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             2000000000
         ));
 
@@ -305,7 +352,9 @@ fn burn_flow() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "alice_sig".as_bytes().to_vec(),
             "alice_stellar_pubkey".as_bytes().to_vec(),
@@ -315,7 +364,9 @@ fn burn_flow() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(bob()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "bob_sig".as_bytes().to_vec(),
             "bob_stellar_pubkey".as_bytes().to_vec(),
@@ -327,7 +378,9 @@ fn burn_flow() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(eve()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             1500000000,
             "some_other_eve_sig".as_bytes().to_vec(),
             "eve_stellar_pubkey".as_bytes().to_vec(),
@@ -361,7 +414,9 @@ fn burn_flow_expired() {
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
             Origin::signed(alice()),
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             750000000
         ));
 
@@ -371,7 +426,9 @@ fn burn_flow_expired() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(alice()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             250000000,
             "alice_sig".as_bytes().to_vec(),
             "alice_stellar_pubkey".as_bytes().to_vec(),
@@ -381,7 +438,9 @@ fn burn_flow_expired() {
         assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
             Origin::signed(bob()),
             1,
-            "some_stellar_address".as_bytes().to_vec(),
+            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                .as_bytes()
+                .to_vec(),
             250000000,
             "bob_sig".as_bytes().to_vec(),
             "bob_stellar_pubkey".as_bytes().to_vec(),
@@ -413,7 +472,7 @@ fn burn_flow_expired() {
         // let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> =
         //     vec![RawEvent::BurnTransactionExpired(
         //         1,
-        //         "some_stellar_address".as_bytes().to_vec(),
+        //         "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z".as_bytes().to_vec(),
         //         250000000,
         //     )];
         // assert_eq!(our_events[4], expected_events[0]);
@@ -432,7 +491,9 @@ fn burn_fails_if_less_than_withdraw_fee_amount() {
         assert_noop!(
             TFTBridgeModule::swap_to_stellar(
                 Origin::signed(alice()),
-                "some_stellar_address".as_bytes().to_vec(),
+                "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                    .as_bytes()
+                    .to_vec(),
                 490000000
             ),
             Error::<TestRuntime>::AmountIsLessThanWithdrawFee

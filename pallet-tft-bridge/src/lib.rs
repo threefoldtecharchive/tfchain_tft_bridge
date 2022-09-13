@@ -9,11 +9,15 @@ use codec::{Decode, Encode};
 use frame_support::dispatch::DispatchErrorWithPostInfo;
 use frame_support::{
     ensure, log,
-    traits::{Currency, EnsureOrigin, OnUnbalanced, ReservableCurrency},
+    traits::{
+        Currency, EnsureOrigin, ExistenceRequirement, OnUnbalanced, ReservableCurrency,
+        WithdrawReasons,
+    },
 };
 use frame_system::{self as system, ensure_signed};
 use scale_info::TypeInfo;
 use sp_runtime::SaturatedConversion;
+use substrate_stellar_sdk as stellar;
 
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
@@ -205,6 +209,7 @@ pub mod pallet {
         AmountIsLessThanWithdrawFee,
         AmountIsLessThanDepositFee,
         WrongParametersProvided,
+        InvalidStellarPublicKey,
     }
 
     #[pallet::genesis_config]
@@ -462,6 +467,9 @@ impl<T: Config> Pallet<T> {
         target_stellar_address: Vec<u8>,
         amount: BalanceOf<T>,
     ) -> DispatchResultWithPostInfo {
+        let _ = stellar::PublicKey::from_encoding(target_stellar_address.clone())
+            .map_err(|_| <Error<T>>::InvalidStellarPublicKey)?;
+
         let withdraw_fee = WithdrawFee::<T>::get();
         let withdraw_fee_b = BalanceOf::<T>::saturated_from(withdraw_fee);
         let free_balance: BalanceOf<T> = T::Currency::free_balance(&source);
@@ -473,14 +481,19 @@ impl<T: Config> Pallet<T> {
 
         // Make sure the user has enough balance to swap the amount
         ensure!(free_balance >= amount, Error::<T>::NotEnoughBalanceToSwap);
+
         // transfer amount - fee to target account
-        let imbalance = T::Currency::slash(&source, amount).0;
-        T::Burn::on_unbalanced(imbalance);
+        let value = T::Currency::withdraw(
+            &source,
+            amount,
+            WithdrawReasons::TRANSFER,
+            ExistenceRequirement::KeepAlive,
+        )?;
+        T::Burn::on_unbalanced(value);
 
         // transfer withdraw fee to fee wallet
-        let burn_fee_b = BalanceOf::<T>::saturated_from(withdraw_fee);
         if let Some(fee_account) = FeeAccount::<T>::get() {
-            T::Currency::deposit_creating(&fee_account, burn_fee_b);
+            T::Currency::deposit_creating(&fee_account, withdraw_fee_b);
         }
 
         // increment burn transaction id
