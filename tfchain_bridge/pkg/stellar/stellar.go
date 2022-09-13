@@ -377,7 +377,7 @@ func (w *StellarWallet) MonitorBridgeAccountAndMint(ctx context.Context, mintFn 
 
 			err = mintFn(senders, tx)
 			for err != nil {
-				log.Error().Msg(fmt.Sprintf("Error occured while minting: %s", err.Error()))
+				log.Err(err).Msg("Error occured while minting")
 				if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
 					return
 				}
@@ -419,7 +419,7 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 		ForAccount: w.config.StellarBridgeAccount,
 		Cursor:     cursor,
 	}
-	log.Info().Msgf("Start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
+	log.Info().Msgf("start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
 
 	for {
 		if ctx.Err() != nil {

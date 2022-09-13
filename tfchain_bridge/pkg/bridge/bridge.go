@@ -95,47 +95,48 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 		if err != nil {
 			panic(errors.Wrap(err, "failed to get block height from persistency"))
 		}
-		log.Info().Msg("starting minting subscription...")
+		log.Info().Msg("starting stellar subscription...")
 		if err := bridge.wallet.MonitorBridgeAccountAndMint(ctx, bridge.mint, height.StellarCursor); err != nil {
 			panic(err)
 		}
 	}()
 
-	go func() {
-		log.Info().Msg("starting subscription to tfchain...")
-		if err := bridge.subClient.SubscribeTfchain(ctx); err != nil {
-			panic(err)
-		}
-	}()
-
+	log.Info().Msg("starting tfchain subscription...")
+	eventSub, err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to subscribe to tfchain")
+	}
 	for {
 		select {
-		case events := <-bridge.subClient.Chan():
-			for _, withdrawCreatedEvent := range events.WithdrawCreatedEvents {
+		case data := <-eventSub:
+			if data.Err != nil {
+				return errors.Wrap(err, "failed to process events")
+			}
+			for _, withdrawCreatedEvent := range data.Events.WithdrawCreatedEvents {
 				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, withdrawExpiredEvent := range events.WithdrawExpiredEvents {
+			for _, withdrawExpiredEvent := range data.Events.WithdrawExpiredEvents {
 				err := bridge.handleWithdrawExpired(ctx, withdrawExpiredEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, withdawReadyEvent := range events.WithdrawReadyEvents {
+			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, refundReadyEvent := range events.RefundReadyEvents {
+			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
 				err := bridge.handleRefundReady(ctx, refundReadyEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
 				}
 			}
-			for _, refundExpiredEvent := range events.RefundExpiredEvents {
+			for _, refundExpiredEvent := range data.Events.RefundExpiredEvents {
 				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
 				if err != nil {
 					log.Err(err).Msg("failed to handle withdraw created")
@@ -152,7 +153,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	log.Info().Msg("calling mint now")
 
 	if len(senders) > 1 {
-		log.Error().Msgf("cannot process mint transaction, multiple senders found, refunding now")
+		log.Info().Msgf("cannot process mint transaction, multiple senders found, refunding now")
 		for sender, depositAmount := range senders {
 			return bridge.refund(context.Background(), sender, depositAmount.Int64(), tx)
 		}
@@ -166,17 +167,17 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	}
 
 	if tx.Memo == "" {
-		log.Error().Msgf("transaction with hash %s has empty memo, refunding now", tx.Hash)
+		log.Info().Msgf("transaction with hash %s has empty memo, refunding now", tx.Hash)
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
 
 	if tx.MemoType == "return" {
-		log.Error().Msgf("transaction with hash %s has a return memo hash, skipping this transaction", tx.Hash)
+		log.Debug().Msgf("transaction with hash %s has a return memo hash, skipping this transaction", tx.Hash)
 		// save cursor
 		cursor := tx.PagingToken()
 		err := bridge.blockPersistency.SaveStellarCursor(cursor)
 		if err != nil {
-			log.Error().Msgf("error while saving cursor:", err.Error())
+			log.Err(err).Msgf("error while saving cursor")
 			return err
 		}
 		log.Info().Msg("stellar cursor saved")
@@ -201,7 +202,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 
 	destinationSubstrateAddress, err := bridge.getSubstrateAddressFromMemo(tx.Memo)
 	if err != nil {
-		log.Info().Msgf("error while decoding tx memo, %s", err.Error())
+		log.Err(err).Msgf("error while decoding tx memo")
 		// memo is not formatted correctly, issue a refund
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
@@ -222,14 +223,14 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("mint call submitted with hash: %s", hash.Hex())
+	log.Debug().Msgf("mint call submitted with hash: %s", hash.Hex())
 
 	log.Info().Msg("Mint succesfull, saving cursor now")
 	// save cursor
 	cursor := tx.PagingToken()
 	err = bridge.blockPersistency.SaveStellarCursor(cursor)
 	if err != nil {
-		log.Error().Msgf("error while saving cursor:", err.Error())
+		log.Err(err).Msgf("error while saving cursor")
 		return err
 	}
 
@@ -282,7 +283,7 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash %s", hash)
+	log.Info().Msgf("call submitted with hash %s", hash.Hex())
 	return nil
 }
 
@@ -315,7 +316,7 @@ func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent su
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash %s", hash)
+	log.Info().Msgf("call submitted with hash %s", hash.Hex())
 	return nil
 }
 
@@ -365,7 +366,7 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash %s", hash)
+	log.Info().Msgf("call submitted with hash %s", hash.Hex())
 
 	return nil
 }
@@ -400,7 +401,7 @@ func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash %s", hash)
+	log.Info().Msgf("call submitted with hash %s", hash.Hex())
 	return nil
 }
 
@@ -439,7 +440,7 @@ func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady sub
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("call submitted with hash %s", hash)
+	log.Info().Msgf("call submitted with hash %s", hash.Hex())
 	return nil
 }
 
