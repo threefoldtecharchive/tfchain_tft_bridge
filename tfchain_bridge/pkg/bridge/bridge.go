@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -32,15 +31,6 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 		return nil, err
 	}
 
-	isValidator, err := subClient.IsValidator(subClient.Identity)
-	if err != nil {
-		return nil, err
-	}
-
-	if !isValidator {
-		return nil, fmt.Errorf("account provided is not a validator for the bridge runtime")
-	}
-
 	blockPersistency, err := pkg.InitPersist(cfg.PersistencyFile)
 	if err != nil {
 		return nil, err
@@ -66,7 +56,7 @@ func NewBridge(ctx context.Context, cfg pkg.BridgeConfig) (*Bridge, error) {
 	}
 
 	// fetch the configured depositfee
-	depositFee, err := subClient.GetDepositFee(subClient.Identity)
+	depositFee, err := subClient.GetDepositFee()
 	if err != nil {
 		return nil, err
 	}
@@ -143,10 +133,11 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			for _, mEvent := range data.Events {
 				err := bridge.mint(mEvent.Senders, mEvent.Tx)
 				for err != nil {
-					log.Err(err).Msg("Error occured while minting")
 					if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
+						log.Info().Msg("transaction is already refunded")
 						continue
 					}
+					log.Err(err).Msg("error occured while minting")
 
 					select {
 					case <-ctx.Done():

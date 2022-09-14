@@ -32,7 +32,7 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 }
 
 func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEvent subpkg.RefundTransactionExpiredEvent) error {
-	refunded, err := bridge.subClient.IsRefundedAlready(bridge.subClient.Identity, refundExpiredEvent.Hash)
+	refunded, err := bridge.subClient.IsRefundedAlready(refundExpiredEvent.Hash)
 	if err != nil {
 		return err
 	}
@@ -47,20 +47,11 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 		return err
 	}
 
-	call, err := bridge.subClient.CreateRefundTransactionOrAddSig(bridge.subClient.Identity, refundExpiredEvent.Hash, refundExpiredEvent.Target, int64(refundExpiredEvent.Amount), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
-	if err != nil {
-		return err
-	}
-	hash, err := bridge.subClient.CallExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("call submitted with hash %s", hash.Hex())
-	return nil
+	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.subClient.Identity, refundExpiredEvent.Hash, refundExpiredEvent.Target, int64(refundExpiredEvent.Amount), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent subpkg.RefundTransactionReadyEvent) error {
-	refunded, err := bridge.subClient.IsRefundedAlready(bridge.subClient.Identity, refundReadyEvent.Hash)
+	refunded, err := bridge.subClient.IsRefundedAlready(refundReadyEvent.Hash)
 	if err != nil {
 		return err
 	}
@@ -70,7 +61,7 @@ func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent su
 		return pkg.ErrTransactionAlreadyRefunded
 	}
 
-	refund, err := bridge.subClient.GetRefundTransaction(bridge.subClient.Identity, refundReadyEvent.Hash)
+	refund, err := bridge.subClient.GetRefundTransaction(refundReadyEvent.Hash)
 	if err != nil {
 		return err
 	}
@@ -80,14 +71,5 @@ func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent su
 		return err
 	}
 
-	call, err := bridge.subClient.SetRefundTransactionExecuted(bridge.subClient.Identity, refund.TxHash)
-	if err != nil {
-		return err
-	}
-	hash, err := bridge.subClient.CallExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("call submitted with hash %s", hash.Hex())
-	return nil
+	return bridge.subClient.SetRefundTransactionExecuted(bridge.subClient.Identity, refund.TxHash)
 }

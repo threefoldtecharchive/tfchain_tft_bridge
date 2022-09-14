@@ -346,6 +346,7 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 	log.Info().Msgf("start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
 
 	go func() {
+		defer close(mintChan)
 		for {
 			select {
 			case <-ctx.Done():

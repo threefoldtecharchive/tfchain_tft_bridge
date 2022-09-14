@@ -30,7 +30,7 @@ func main() {
 
 	flag.Parse()
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)

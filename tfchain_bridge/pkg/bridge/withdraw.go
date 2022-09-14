@@ -13,7 +13,7 @@ import (
 )
 
 func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg.WithdrawCreatedEvent) error {
-	burned, err := bridge.subClient.IsBurnedAlready(bridge.subClient.Identity, types.U64(withdraw.ID))
+	burned, err := bridge.subClient.IsBurnedAlready(types.U64(withdraw.ID))
 	if err != nil {
 		return err
 	}
@@ -31,16 +31,7 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 			return err
 		}
 		log.Info().Msgf("setting invalid burn transaction (%d) as executed", withdraw.ID)
-		call, err := bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdraw.ID)
-		if err != nil {
-			return err
-		}
-		hash, err := bridge.subClient.CallExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("call submitted with hash %s", hash)
-		return nil
+		return bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdraw.ID)
 	}
 
 	amount := big.NewInt(int64(withdraw.Amount))
@@ -50,32 +41,13 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 	}
 	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	call, err := bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdraw.ID, withdraw.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
-	if err != nil {
-		return err
-	}
-	hash, err := bridge.subClient.CallExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("call submitted with hash %s", hash.Hex())
-
-	return nil
+	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdraw.ID, withdraw.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired subpkg.WithdrawExpiredEvent) error {
 	if err := bridge.wallet.CheckAccount(withdrawExpired.Target); err != nil {
 		log.Info().Msgf("tx with id: %d is an invalid burn transaction, setting burn as executed since we have no way to recover...", withdrawExpired.ID)
-		call, err := bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawExpired.ID)
-		if err != nil {
-			return err
-		}
-		hash, err := bridge.subClient.CallExtrinsic(call)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("call submitted with hash %s", hash)
-		return nil
+		return bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawExpired.ID)
 	}
 
 	amount := big.NewInt(int64(withdrawExpired.Amount))
@@ -85,20 +57,11 @@ func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired
 	}
 	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	call, err := bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdrawExpired.ID, withdrawExpired.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
-	if err != nil {
-		return err
-	}
-	hash, err := bridge.subClient.CallExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("call submitted with hash %s", hash.Hex())
-	return nil
+	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdrawExpired.ID, withdrawExpired.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady subpkg.WithdrawReadyEvent) error {
-	burned, err := bridge.subClient.IsBurnedAlready(bridge.subClient.Identity, types.U64(withdrawReady.ID))
+	burned, err := bridge.subClient.IsBurnedAlready(types.U64(withdrawReady.ID))
 	if err != nil {
 		return err
 	}
@@ -108,7 +71,7 @@ func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady sub
 		return errors.New("tx burned already")
 	}
 
-	burnTx, err := bridge.subClient.GetBurnTransaction(bridge.subClient.Identity, types.U64(withdrawReady.ID))
+	burnTx, err := bridge.subClient.GetBurnTransaction(types.U64(withdrawReady.ID))
 	if err != nil {
 		return err
 	}
@@ -124,14 +87,5 @@ func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady sub
 		return err
 	}
 
-	call, err := bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawReady.ID)
-	if err != nil {
-		return err
-	}
-	hash, err := bridge.subClient.CallExtrinsic(call)
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("call submitted with hash %s", hash.Hex())
-	return nil
+	return bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawReady.ID)
 }

@@ -41,6 +41,15 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 		return nil, err
 	}
 
+	isValidator, err := cl.IsValidator(tfchainIdentity)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isValidator {
+		return nil, fmt.Errorf("account provided is not a validator for the bridge runtime")
+	}
+
 	return &SubstrateClient{
 		cl,
 		tfchainIdentity,
@@ -60,6 +69,7 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context)
 
 	eventChannel := make(chan EventSubscription)
 	go func() {
+		defer close(eventChannel)
 		for {
 			select {
 			case head := <-chainHeadsSub.Chan():
