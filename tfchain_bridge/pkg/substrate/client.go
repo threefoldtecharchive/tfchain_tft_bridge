@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
 )
@@ -60,12 +60,12 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan<- EventSubscription) error {
 	cl, _, err := client.GetClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to get client")
+		log.Fatal().Msg("failed to get client")
 	}
 
 	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
 	if err != nil {
-		return errors.Wrap(err, "failed to subscribe to finalized heads")
+		log.Fatal().Msg("failed to subscribe to finalized heads")
 	}
 
 	for {
@@ -77,6 +77,18 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context,
 				Err:    err,
 			}
 			eventChannel <- data
+		case err := <-chainHeadsSub.Err():
+			log.Err(err).Msg("error with subscription")
+
+			bo := backoff.NewExponentialBackOff()
+			bo.MaxElapsedTime = 0 //forever
+			_ = backoff.RetryNotify(func() error {
+				chainHeadsSub, err = cl.RPC.Chain.SubscribeFinalizedHeads()
+				return err
+			}, bo, func(err error, d time.Duration) {
+				log.Warn().Err(err).Msgf("connection to chain lost, reopening connection in %s", d.String())
+			})
+
 		case <-ctx.Done():
 			chainHeadsSub.Unsubscribe()
 			return ctx.Err()

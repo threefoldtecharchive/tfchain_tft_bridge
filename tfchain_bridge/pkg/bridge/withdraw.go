@@ -2,11 +2,11 @@ package bridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
@@ -32,7 +32,7 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
+	log.Debug().Msgf("stellar account sequence number: %d", sequenceNumber)
 
 	return bridge.subClient.RetryProposeWithdrawOrAddSig(ctx, withdraw.ID, withdraw.Target, big.NewInt(int64(withdraw.Amount)), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
@@ -47,7 +47,7 @@ func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
+	log.Debug().Msgf("stellar account sequence number: %d", sequenceNumber)
 
 	return bridge.subClient.RetryProposeWithdrawOrAddSig(ctx, withdrawExpired.ID, withdrawExpired.Target, big.NewInt(int64(withdrawExpired.Amount)), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
@@ -55,12 +55,12 @@ func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired
 func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady subpkg.WithdrawReadyEvent) error {
 	burned, err := bridge.subClient.IsBurnedAlready(types.U64(withdrawReady.ID))
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if burned {
 		log.Info().Uint64("ID", uint64(withdrawReady.ID)).Msg("tx is burned already, skipping...")
-		return nil
+		return pkg.ErrTransactionAlreadyBurned
 	}
 
 	burnTx, err := bridge.subClient.GetBurnTransaction(types.U64(withdrawReady.ID))
@@ -70,7 +70,7 @@ func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady sub
 
 	if len(burnTx.Signatures) == 0 {
 		log.Info().Msg("found 0 signatures, aborting")
-		return errors.New("no signatures")
+		return pkg.ErrNoSignatures
 	}
 
 	// todo add memo hash
@@ -88,12 +88,14 @@ func (bridge *Bridge) handleBadWithdraw(ctx context.Context, withdraw subpkg.Wit
 
 	minted, err := bridge.subClient.IsMintedAlready(mintID)
 	if err != nil {
-		return nil
+		if !errors.Is(err, substrate.ErrMintTransactionNotFound) {
+			return err
+		}
 	}
 
 	if minted {
 		log.Debug().Str("txHash", mintID).Msg("transaction is already minted")
-		return nil
+		return pkg.ErrTransactionAlreadyMinted
 	}
 
 	log.Info().Str("mintID", mintID).Msg("going to propose mint transaction")

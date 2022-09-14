@@ -90,6 +90,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	tfchainSub := make(chan subpkg.EventSubscription)
 	go func() {
 		defer close(tfchainSub)
+
 		if err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx, tfchainSub); err != nil {
 			log.Fatal().Msgf("failed to subscribe to tfchain %s", err.Error())
 		}
@@ -104,6 +105,10 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			for _, withdrawCreatedEvent := range data.Events.WithdrawCreatedEvents {
 				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
 				if err != nil {
+					// If the TX is already withdrawn or refunded (minted on tfchain) skip
+					if errors.Is(err, pkg.ErrTransactionAlreadyBurned) || errors.Is(err, pkg.ErrTransactionAlreadyMinted) {
+						continue
+					}
 					return errors.Wrap(err, "failed to handle withdraw created")
 				}
 			}
@@ -116,8 +121,12 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
 				if err != nil {
+					if errors.Is(err, pkg.ErrTransactionAlreadyBurned) {
+						continue
+					}
 					return errors.Wrap(err, "failed to handle withdraw ready")
 				}
+				log.Info().Uint64("ID", withdawReadyEvent.ID).Msg("withdraw processed")
 			}
 			for _, refundExpiredEvent := range data.Events.RefundExpiredEvents {
 				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
@@ -128,8 +137,12 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
 				err := bridge.handleRefundReady(ctx, refundReadyEvent)
 				if err != nil {
+					if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
+						continue
+					}
 					return errors.Wrap(err, "failed to handle refund ready")
 				}
+				log.Info().Str("hash", refundReadyEvent.Hash).Msg("refund processed")
 			}
 		case data := <-stellarSub:
 			if data.Err != nil {
@@ -139,12 +152,12 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			for _, mEvent := range data.Events {
 				err := bridge.mint(ctx, mEvent.Senders, mEvent.Tx)
 				if err != nil {
-					if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
-						log.Info().Msg("transaction is already refunded")
+					if errors.Is(err, pkg.ErrTransactionAlreadyMinted) {
 						continue
 					}
 					return errors.Wrap(err, "failed to handle mint")
 				}
+				log.Info().Str("hash", mEvent.Tx.Hash).Msg("mint processed")
 			}
 		case <-ctx.Done():
 			return ctx.Err()

@@ -9,7 +9,7 @@ require (
 )
 
 require (
-	github.com/ethereum/go-ethereum v1.10.17
+	github.com/ethereum/go-ethereum v1.10.17 // indirect
 	github.com/klauspost/compress v1.9.5 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/rs/zerolog v1.26.0
@@ -19,7 +19,10 @@ require (
 	github.com/vedhavyas/go-subkey v1.0.3
 )
 
-require github.com/threefoldtech/substrate-client v0.0.0-20220909131311-aac132e3f2f6
+require (
+	github.com/cenkalti/backoff/v4 v4.1.3
+	github.com/threefoldtech/substrate-client v0.0.0-20220909131311-aac132e3f2f6
+)
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect

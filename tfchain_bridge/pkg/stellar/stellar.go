@@ -102,7 +102,7 @@ func (w *StellarWallet) CreatePaymentWithSignaturesAndSubmit(ctx context.Context
 
 	requiredSignatures := signatures[:w.signatureCount]
 	for _, sig := range requiredSignatures {
-		log.Debug().Msgf("adding signature %s, account %s", string(sig.Signature), string(sig.StellarAddress))
+		log.Debug().Str("signature", string(sig.Signature)).Str("address", string(sig.StellarAddress)).Msg("adding signature")
 		txn, err = txn.AddSignatureBase64(w.getNetworkPassPhrase(), string(sig.StellarAddress), string(sig.Signature))
 		if err != nil {
 			return err
@@ -283,7 +283,7 @@ func (w *StellarWallet) submitTransaction(ctx context.Context, txn *txnbuild.Tra
 		}
 		return errors.Wrap(err, "error submitting transaction")
 	}
-	log.Info().Msg(fmt.Sprintf("transaction: %s submitted to the stellar network..", txResult.Hash))
+	log.Info().Str("hash", txResult.Hash).Msg("transaction submitted to the stellar network")
 	return nil
 }
 

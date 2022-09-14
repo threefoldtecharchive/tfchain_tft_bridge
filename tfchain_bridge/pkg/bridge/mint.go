@@ -10,11 +10,23 @@ import (
 	"github.com/rs/zerolog/log"
 	hProtocol "github.com/stellar/go/protocols/horizon"
 	"github.com/threefoldtech/substrate-client"
+	"github.com/threefoldtech/tfchain_bridge/pkg"
 )
 
 // mint handler for stellar
 func (bridge *Bridge) mint(ctx context.Context, senders map[string]*big.Int, tx hProtocol.Transaction) error {
-	log.Info().Msg("calling mint now")
+	minted, err := bridge.subClient.IsMintedAlready(tx.Hash)
+	if err != nil && err != substrate.ErrMintTransactionNotFound {
+		if errors.Is(err, substrate.ErrMintTransactionNotFound) {
+			return pkg.ErrTransactionAlreadyMinted
+		}
+		return err
+	}
+
+	if minted {
+		log.Info().Str("tx_id", tx.Hash).Msg("transaction is already minted")
+		return pkg.ErrTransactionAlreadyMinted
+	}
 
 	if len(senders) == 0 {
 		return nil
@@ -49,16 +61,6 @@ func (bridge *Bridge) mint(ctx context.Context, senders map[string]*big.Int, tx 
 			return err
 		}
 		log.Info().Msg("stellar cursor saved")
-		return nil
-	}
-
-	minted, err := bridge.subClient.IsMintedAlready(tx.Hash)
-	if err != nil && err != substrate.ErrMintTransactionNotFound {
-		return err
-	}
-
-	if minted {
-		log.Info().Str("tx_id", tx.Hash).Msg("transaction is already minted")
 		return nil
 	}
 
