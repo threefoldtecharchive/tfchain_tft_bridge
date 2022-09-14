@@ -13,8 +13,12 @@ import (
 )
 
 // mint handler for stellar
-func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction) error {
+func (bridge *Bridge) mint(ctx context.Context, senders map[string]*big.Int, tx hProtocol.Transaction) error {
 	log.Info().Msg("calling mint now")
+
+	if len(senders) == 0 {
+		return nil
+	}
 
 	if len(senders) > 1 {
 		log.Info().Msgf("cannot process mint transaction, multiple senders found, refunding now")
@@ -48,14 +52,13 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return nil
 	}
 
-	// TODO check if we already minted for this txid
 	minted, err := bridge.subClient.IsMintedAlready(tx.Hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
 		return err
 	}
 
 	if minted {
-		log.Error().Str("tx_id", tx.Hash).Msg("transaction is already minted")
+		log.Info().Str("tx_id", tx.Hash).Msg("transaction is already minted")
 		return nil
 	}
 
@@ -66,7 +69,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 
 	destinationSubstrateAddress, err := bridge.getSubstrateAddressFromMemo(tx.Memo)
 	if err != nil {
-		log.Err(err).Msgf("error while decoding tx memo")
+		log.Info().Msgf("error while decoding tx memo: %s", err.Error())
 		// memo is not formatted correctly, issue a refund
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
@@ -78,35 +81,19 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 		return err
 	}
 
-	err = bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Identity, tx.Hash, accountID, depositedAmount)
+	err = bridge.subClient.RetryProposeMintOrVote(ctx, tx.Hash, accountID, depositedAmount)
 	if err != nil {
 		return err
 	}
 
 	// save cursor
 	cursor := tx.PagingToken()
-	err = bridge.blockPersistency.SaveStellarCursor(cursor)
-	if err != nil {
+	if err = bridge.blockPersistency.SaveStellarCursor(cursor); err != nil {
 		log.Err(err).Msgf("error while saving cursor")
 		return err
 	}
 
 	return nil
-}
-
-func (bridge *Bridge) handleMint(amount *big.Int, target substrate.AccountID, hash string) error {
-	// TODO check if we already minted for this txid
-	minted, err := bridge.subClient.IsMintedAlready(hash)
-	if err != nil && err != substrate.ErrMintTransactionNotFound {
-		return nil
-	}
-
-	if minted {
-		log.Debug().Str("tx_id", hash).Msg("transaction is already minted")
-		return nil
-	}
-
-	return bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Identity, hash, target, amount)
 }
 
 func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {

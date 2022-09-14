@@ -3,8 +3,9 @@ package substrate
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"time"
 
-	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
@@ -26,7 +27,7 @@ type Versioned struct {
 
 type SubstrateClient struct {
 	*substrate.Substrate
-	Identity substrate.Identity
+	identity substrate.Identity
 }
 
 // NewSubstrate creates a substrate client
@@ -56,8 +57,7 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 	}, nil
 }
 
-func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan EventSubscription) error {
-	defer close(eventChannel)
+func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan<- EventSubscription) error {
 	cl, _, err := client.GetClient()
 	if err != nil {
 		return errors.Wrap(err, "failed to get client")
@@ -84,18 +84,82 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context,
 	}
 }
 
-func (client *SubstrateClient) CallExtrinsic(call *types.Call) (*types.Hash, error) {
-	cl, meta, err := client.GetClient()
-	if err != nil {
-		return nil, err
+func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uint64) error {
+	err := s.SetBurnTransactionExecuted(s.identity, tixd)
+	for err != nil {
+		log.Err(err).Msg("error while setting refund transaction as executed")
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(10 * time.Second):
+			err = s.SetBurnTransactionExecuted(s.identity, tixd)
+		}
 	}
 
-	log.Info().Msgf("call ready to be submitted")
-	hash, err := client.Substrate.Call(cl, meta, client.Identity, *call)
-	if err != nil {
-		log.Error().Msgf("error occurred while submitting call %+v", err)
-		return nil, err
+	return nil
+}
+
+func (s *SubstrateClient) RetryProposeWithdrawOrAddSig(ctx context.Context, txID uint64, target string, amount *big.Int, signature string, stellarAddress string, sequence_number uint64) error {
+	err := s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+	for err != nil {
+		log.Err(err).Msg("error while proposing withdraw or adding signature")
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(10 * time.Second):
+			err = s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+		}
 	}
 
-	return &hash, nil
+	return nil
+}
+
+func (s *SubstrateClient) RetryCreateRefundTransactionOrAddSig(ctx context.Context, txHash string, target string, amount int64, signature string, stellarAddress string, sequence_number uint64) error {
+	err := s.CreateRefundTransactionOrAddSig(s.identity, txHash, target, amount, signature, stellarAddress, sequence_number)
+	for err != nil {
+		log.Err(err).Msg("error while creating refund tx or adding signature")
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(10 * time.Second):
+			err = s.CreateRefundTransactionOrAddSig(s.identity, txHash, target, amount, signature, stellarAddress, sequence_number)
+		}
+	}
+
+	return nil
+}
+
+func (s *SubstrateClient) RetrySetRefundTransactionExecutedTx(ctx context.Context, txHash string) error {
+	err := s.SetRefundTransactionExecuted(s.identity, txHash)
+	for err != nil {
+		log.Err(err).Msg("error while setting refund transaction as executed")
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(10 * time.Second):
+			err = s.SetRefundTransactionExecuted(s.identity, txHash)
+		}
+	}
+
+	return nil
+}
+
+func (s *SubstrateClient) RetryProposeMintOrVote(ctx context.Context, txID string, target substrate.AccountID, amount *big.Int) error {
+	err := s.ProposeOrVoteMintTransaction(s.identity, txID, target, amount)
+	for err != nil {
+		log.Err(err).Msg("error while proposing mint or voting")
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(10 * time.Second):
+			err = s.ProposeOrVoteMintTransaction(s.identity, txID, target, amount)
+		}
+	}
+
+	return nil
 }

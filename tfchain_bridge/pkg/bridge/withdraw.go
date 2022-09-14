@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
+	"github.com/threefoldtech/tfchain_bridge/pkg"
 	subpkg "github.com/threefoldtech/tfchain_bridge/pkg/substrate"
 )
 
@@ -21,85 +21,35 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 
 	if burned {
 		log.Info().Uint64("ID", uint64(withdraw.ID)).Msgf("tx is burned already, skipping...")
-		return errors.New("tx burned already")
+		return pkg.ErrTransactionAlreadyBurned
 	}
 
 	if err := bridge.wallet.CheckAccount(withdraw.Target); err != nil {
-		log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("tx is an invalid burn transaction, minting on chain again...")
-		mintID := fmt.Sprintf("refund-%d", withdraw.ID)
-		err := bridge.handleMint(big.NewInt(int64(withdraw.Amount)), substrate.AccountID(withdraw.Source), mintID)
-		for err != nil {
-			log.Err(err).Msg("error while minting on chain again for invalid withdraw")
-
-			select {
-			case <-ctx.Done():
-				return err
-			case <-time.After(10 * time.Second):
-				err = bridge.handleMint(big.NewInt(int64(withdraw.Amount)), substrate.AccountID(withdraw.Source), mintID)
-			}
-		}
-		if err != nil {
-			return errors.Wrap(err, "failed to handle mint on chain again for invalid withdraw")
-		}
-
-		log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("setting invalid burn transaction as executed")
-		err = bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdraw.ID)
-		for err != nil {
-			log.Err(err).Msg("error while setting burn transaction as executed")
-
-			select {
-			case <-ctx.Done():
-				return err
-			case <-time.After(10 * time.Second):
-				err = bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdraw.ID)
-			}
-		}
-		if err != nil {
-			return errors.Wrap(err, "failed to handle setting burn transaction as executed")
-		}
-
-		return nil
+		return bridge.handleBadWithdraw(ctx, withdraw)
 	}
 
-	amount := big.NewInt(int64(withdraw.Amount))
-	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, withdraw.Target, amount.Uint64(), withdraw.ID)
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, withdraw.Target, withdraw.Amount, withdraw.ID)
 	if err != nil {
 		return err
 	}
 	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdraw.ID, withdraw.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.RetryProposeWithdrawOrAddSig(ctx, withdraw.ID, withdraw.Target, big.NewInt(int64(withdraw.Amount)), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired subpkg.WithdrawExpiredEvent) error {
 	if err := bridge.wallet.CheckAccount(withdrawExpired.Target); err != nil {
 		log.Info().Uint64("ID", uint64(withdrawExpired.ID)).Msg("tx is an invalid burn transaction, setting burn as executed since we have no way to recover...")
-		err = bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawExpired.ID)
-		for err != nil {
-			log.Err(err).Msg("error while setting burn transaction as executed")
-
-			select {
-			case <-ctx.Done():
-				return err
-			case <-time.After(10 * time.Second):
-				err = bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawExpired.ID)
-			}
-		}
-		if err != nil {
-			return errors.Wrap(err, "failed to handle setting burn transaction as executed")
-		}
-
-		return nil
+		return bridge.subClient.RetrySetWithdrawExecuted(ctx, withdrawExpired.ID)
 	}
 
-	amount := big.NewInt(int64(withdrawExpired.Amount))
-	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, withdrawExpired.Target, amount.Uint64(), withdrawExpired.ID)
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, withdrawExpired.Target, withdrawExpired.Amount, withdrawExpired.ID)
 	if err != nil {
 		return err
 	}
 	log.Info().Msgf("stellar account sequence number: %d", sequenceNumber)
 
-	return bridge.subClient.ProposeBurnTransactionOrAddSig(bridge.subClient.Identity, withdrawExpired.ID, withdrawExpired.Target, amount, signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.RetryProposeWithdrawOrAddSig(ctx, withdrawExpired.ID, withdrawExpired.Target, big.NewInt(int64(withdrawExpired.Amount)), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady subpkg.WithdrawReadyEvent) error {
@@ -129,5 +79,29 @@ func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady sub
 		return err
 	}
 
-	return bridge.subClient.SetBurnTransactionExecuted(bridge.subClient.Identity, withdrawReady.ID)
+	return bridge.subClient.RetrySetWithdrawExecuted(ctx, withdrawReady.ID)
+}
+
+func (bridge *Bridge) handleBadWithdraw(ctx context.Context, withdraw subpkg.WithdrawCreatedEvent) error {
+	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("tx is an invalid burn transaction, minting on chain again...")
+	mintID := fmt.Sprintf("refund-%d", withdraw.ID)
+
+	minted, err := bridge.subClient.IsMintedAlready(mintID)
+	if err != nil {
+		return nil
+	}
+
+	if minted {
+		log.Debug().Str("txHash", mintID).Msg("transaction is already minted")
+		return nil
+	}
+
+	log.Info().Str("mintID", mintID).Msg("going to propose mint transaction")
+	err = bridge.subClient.RetryProposeMintOrVote(ctx, mintID, substrate.AccountID(withdraw.Source), big.NewInt(int64(withdraw.Amount)))
+	if err != nil {
+		return err
+	}
+
+	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("setting invalid burn transaction as executed")
+	return bridge.subClient.RetrySetWithdrawExecuted(ctx, withdraw.ID)
 }

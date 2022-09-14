@@ -331,8 +331,7 @@ func (w *StellarWallet) getAccountDetails(address string) (account hProtocol.Acc
 	return account, nil
 }
 
-func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, mintChan chan MintEventSubscription, cursor string) error {
-	defer close(mintChan)
+func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, mintChan chan<- MintEventSubscription, cursor string) error {
 	client, err := w.getHorizonClient()
 	if err != nil {
 		return err
@@ -342,16 +341,16 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, min
 		ForAccount: w.config.StellarBridgeAccount,
 		Cursor:     cursor,
 	}
-	log.Info().Msgf("start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+			log.Info().Str("account", opRequest.ForAccount).Str("horizon", client.HorizonURL).Str("cursor", opRequest.Cursor).Msgf("fetching stellar transactions")
 			response, err := client.Transactions(opRequest)
 			if err != nil {
-				log.Info().Msgf("Error getting transactions for stellar account", "error", err)
+				log.Err(err).Msg("Error getting transactions for stellar account")
 				select {
 				case <-ctx.Done():
 					return ctx.Err()

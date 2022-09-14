@@ -76,10 +76,10 @@ func (client *SubstrateClient) SubscribeEvents() (*state.StorageSubscription, ty
 }
 
 func (client *SubstrateClient) processEventsForHeight(height uint32) (Events, error) {
-	log.Info().Msgf("fetching events for blockheight %d", height)
+	log.Info().Uint32("ID", height).Msg("fetching events for blockheight")
 	records, err := client.GetEventsForBlock(height)
 	if err != nil {
-		log.Info().Msgf("failed to decode block with height %d", height)
+		log.Err(err).Uint32("ID", height).Msg("failed to decode block for height")
 		return Events{}, err
 	}
 
@@ -94,14 +94,14 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 	var withdrawExpiredEvents []WithdrawExpiredEvent
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionReady {
-		log.Info().Msg("found refund transaction ready event")
+		log.Info().Str("hash", string(e.RefundTransactionHash)).Msg("found refund transaction ready event")
 		refundTransactionReadyEvents = append(refundTransactionReadyEvents, RefundTransactionReadyEvent{
 			Hash: string(e.RefundTransactionHash),
 		})
 	}
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
-		log.Info().Msgf("found expired refund transaction")
+		log.Info().Str("hash", string(e.RefundTransactionHash)).Msgf("found expired refund transaction")
 		refundTransactionExpiredEvents = append(refundTransactionExpiredEvents, RefundTransactionExpiredEvent{
 			Hash:   string(e.RefundTransactionHash),
 			Target: string(e.Target),

@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"context"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -81,18 +80,17 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	log.Info().Msg("starting stellar subscription...")
 	stellarSub := make(chan stellar.MintEventSubscription)
 	go func() {
-		err = bridge.wallet.StreamBridgeStellarTransactions(ctx, stellarSub, height.StellarCursor)
-		if err != nil {
+		defer close(stellarSub)
+		if err = bridge.wallet.StreamBridgeStellarTransactions(ctx, stellarSub, height.StellarCursor); err != nil {
 			log.Fatal().Msgf("failed to monitor bridge account %s", err.Error())
-
 		}
 	}()
 
 	log.Info().Msg("starting tfchain subscription...")
 	tfchainSub := make(chan subpkg.EventSubscription)
 	go func() {
-		err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx, tfchainSub)
-		if err != nil {
+		defer close(tfchainSub)
+		if err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx, tfchainSub); err != nil {
 			log.Fatal().Msgf("failed to subscribe to tfchain %s", err.Error())
 		}
 	}()
@@ -117,16 +115,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			}
 			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
-				for err != nil {
-					log.Err(err).Msg("error occured while handling withdraw")
-
-					select {
-					case <-ctx.Done():
-						return err
-					case <-time.After(10 * time.Second):
-						err = bridge.handleWithdrawReady(ctx, withdawReadyEvent)
-					}
-				}
 				if err != nil {
 					return errors.Wrap(err, "failed to handle withdraw ready")
 				}
@@ -139,16 +127,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			}
 			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
 				err := bridge.handleRefundReady(ctx, refundReadyEvent)
-				for err != nil {
-					log.Err(err).Msg("error occured while handling withdraw")
-
-					select {
-					case <-ctx.Done():
-						return err
-					case <-time.After(10 * time.Second):
-						err = bridge.handleRefundReady(ctx, refundReadyEvent)
-					}
-				}
 				if err != nil {
 					return errors.Wrap(err, "failed to handle refund ready")
 				}
@@ -159,22 +137,12 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			}
 
 			for _, mEvent := range data.Events {
-				err := bridge.mint(mEvent.Senders, mEvent.Tx)
-				for err != nil {
+				err := bridge.mint(ctx, mEvent.Senders, mEvent.Tx)
+				if err != nil {
 					if errors.Is(err, pkg.ErrTransactionAlreadyRefunded) {
 						log.Info().Msg("transaction is already refunded")
 						continue
 					}
-					log.Err(err).Msg("error occured while minting")
-
-					select {
-					case <-ctx.Done():
-						return err
-					case <-time.After(10 * time.Second):
-						err = bridge.mint(mEvent.Senders, mEvent.Tx)
-					}
-				}
-				if err != nil {
 					return errors.Wrap(err, "failed to handle mint")
 				}
 			}

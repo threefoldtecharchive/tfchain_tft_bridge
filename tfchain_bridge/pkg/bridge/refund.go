@@ -47,7 +47,7 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 		return err
 	}
 
-	return bridge.subClient.CreateRefundTransactionOrAddSig(bridge.subClient.Identity, refundExpiredEvent.Hash, refundExpiredEvent.Target, int64(refundExpiredEvent.Amount), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+	return bridge.subClient.RetryCreateRefundTransactionOrAddSig(ctx, refundExpiredEvent.Hash, refundExpiredEvent.Target, int64(refundExpiredEvent.Amount), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent subpkg.RefundTransactionReadyEvent) error {
@@ -66,10 +66,9 @@ func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent su
 		return err
 	}
 
-	err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, refund.Signatures, int64(refund.SequenceNumber))
-	if err != nil {
+	if err = bridge.wallet.CreateRefundPaymentWithSignaturesAndSubmit(ctx, refund.Target, uint64(refund.Amount), refund.TxHash, refund.Signatures, int64(refund.SequenceNumber)); err != nil {
 		return err
 	}
 
-	return bridge.subClient.SetRefundTransactionExecuted(bridge.subClient.Identity, refund.TxHash)
+	return bridge.subClient.RetrySetRefundTransactionExecutedTx(ctx, refund.TxHash)
 }
