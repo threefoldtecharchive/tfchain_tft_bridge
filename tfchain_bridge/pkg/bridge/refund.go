@@ -23,8 +23,7 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 	// save cursor
 	cursor := tx.PagingToken()
 	log.Info().Msgf("saving cursor now %s", cursor)
-	err = bridge.blockPersistency.SaveStellarCursor(cursor)
-	if err != nil {
+	if err = bridge.blockPersistency.SaveStellarCursor(cursor); err != nil {
 		log.Error().Msgf("error while saving cursor:", err.Error())
 		return err
 	}
