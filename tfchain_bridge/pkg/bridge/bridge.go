@@ -77,17 +77,25 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to get block height from persistency")
 	}
+
 	log.Info().Msg("starting stellar subscription...")
-	stellarSub, err := bridge.wallet.StreamBridgeStellarTransactions(ctx, height.StellarCursor)
-	if err != nil {
-		return errors.Wrap(err, "failed to monitor bridge account")
-	}
+	stellarSub := make(chan stellar.MintEventSubscription)
+	go func() {
+		err = bridge.wallet.StreamBridgeStellarTransactions(ctx, stellarSub, height.StellarCursor)
+		if err != nil {
+			log.Fatal().Msgf("failed to monitor bridge account %s", err.Error())
+
+		}
+	}()
 
 	log.Info().Msg("starting tfchain subscription...")
-	tfchainSub, err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx)
-	if err != nil {
-		return errors.Wrap(err, "failed to subscribe to tfchain")
-	}
+	tfchainSub := make(chan subpkg.EventSubscription)
+	go func() {
+		err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx, tfchainSub)
+		if err != nil {
+			log.Fatal().Msgf("failed to subscribe to tfchain %s", err.Error())
+		}
+	}()
 
 	for {
 		select {

@@ -331,12 +331,11 @@ func (w *StellarWallet) getAccountDetails(address string) (account hProtocol.Acc
 	return account, nil
 }
 
-func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cursor string) (chan MintEventSubscription, error) {
-	mintChan := make(chan MintEventSubscription)
-
+func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, mintChan chan MintEventSubscription, cursor string) error {
+	defer close(mintChan)
 	client, err := w.getHorizonClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	opRequest := horizonclient.TransactionRequest{
@@ -345,50 +344,42 @@ func (w *StellarWallet) StreamBridgeStellarTransactions(ctx context.Context, cur
 	}
 	log.Info().Msgf("start fetching stellar transactions", "horizon", client.HorizonURL, "account", opRequest.ForAccount, "cursor", opRequest.Cursor)
 
-	go func() {
-		defer close(mintChan)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				response, err := client.Transactions(opRequest)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			response, err := client.Transactions(opRequest)
+			if err != nil {
+				log.Info().Msgf("Error getting transactions for stellar account", "error", err)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(5 * time.Second):
+					continue
+				}
+			}
+
+			for _, tx := range response.Embedded.Records {
+				mintEvents, err := w.processTransaction(tx)
 				if err != nil {
-					log.Info().Msgf("Error getting transactions for stellar account", "error", err)
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(5 * time.Second):
-						continue
-					}
+					return err
 				}
-
-				for _, tx := range response.Embedded.Records {
-					mintEvents, err := w.processTransaction(tx)
-					if err != nil {
-						mintChan <- MintEventSubscription{
-							Err: err,
-						}
-						return
-					}
-					mintChan <- MintEventSubscription{
-						Events: mintEvents,
-					}
-					opRequest.Cursor = tx.PagingToken()
+				mintChan <- MintEventSubscription{
+					Events: mintEvents,
 				}
+				opRequest.Cursor = tx.PagingToken()
+			}
 
-				if len(response.Embedded.Records) == 0 {
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(10 * time.Second):
-					}
+			if len(response.Embedded.Records) == 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(10 * time.Second):
 				}
 			}
 		}
-	}()
-
-	return mintChan, nil
+	}
 }
 
 func (w *StellarWallet) processTransaction(tx hProtocol.Transaction) ([]MintEvent, error) {

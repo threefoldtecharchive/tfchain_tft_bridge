@@ -56,37 +56,32 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 	}, nil
 }
 
-func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context) (chan EventSubscription, error) {
+func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan EventSubscription) error {
+	defer close(eventChannel)
 	cl, _, err := client.GetClient()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get client")
+		return errors.Wrap(err, "failed to get client")
 	}
 
 	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to subscribe to finalized heads")
+		return errors.Wrap(err, "failed to subscribe to finalized heads")
 	}
 
-	eventChannel := make(chan EventSubscription)
-	go func() {
-		defer close(eventChannel)
-		for {
-			select {
-			case head := <-chainHeadsSub.Chan():
-				events, err := client.processEventsForHeight(uint32(head.Number))
-				data := EventSubscription{
-					Events: events,
-					Err:    err,
-				}
-				eventChannel <- data
-			case <-ctx.Done():
-				chainHeadsSub.Unsubscribe()
-				return
+	for {
+		select {
+		case head := <-chainHeadsSub.Chan():
+			events, err := client.processEventsForHeight(uint32(head.Number))
+			data := EventSubscription{
+				Events: events,
+				Err:    err,
 			}
+			eventChannel <- data
+		case <-ctx.Done():
+			chainHeadsSub.Unsubscribe()
+			return ctx.Err()
 		}
-	}()
-
-	return eventChannel, nil
+	}
 }
 
 func (client *SubstrateClient) CallExtrinsic(call *types.Call) (*types.Hash, error) {
