@@ -81,7 +81,7 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context,
 			log.Err(err).Msg("error with subscription")
 
 			bo := backoff.NewExponentialBackOff()
-			bo.MaxElapsedTime = 0 //forever
+			bo.MaxElapsedTime = time.Duration(time.Minute * 10) // 10 minutes
 			_ = backoff.RetryNotify(func() error {
 				chainHeadsSub, err = cl.RPC.Chain.SubscribeFinalizedHeads()
 				return err
