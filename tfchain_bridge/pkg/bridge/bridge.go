@@ -117,20 +117,40 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			}
 			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
+				for err != nil {
+					log.Err(err).Msg("error occured while handling withdraw")
+
+					select {
+					case <-ctx.Done():
+						return err
+					case <-time.After(10 * time.Second):
+						err = bridge.handleWithdrawReady(ctx, withdawReadyEvent)
+					}
+				}
 				if err != nil {
 					return errors.Wrap(err, "failed to handle withdraw ready")
-				}
-			}
-			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
-				err := bridge.handleRefundReady(ctx, refundReadyEvent)
-				if err != nil {
-					return errors.Wrap(err, "failed to handle refund ready")
 				}
 			}
 			for _, refundExpiredEvent := range data.Events.RefundExpiredEvents {
 				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
 				if err != nil {
 					return errors.Wrap(err, "failed to handle refund expired")
+				}
+			}
+			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
+				err := bridge.handleRefundReady(ctx, refundReadyEvent)
+				for err != nil {
+					log.Err(err).Msg("error occured while handling withdraw")
+
+					select {
+					case <-ctx.Done():
+						return err
+					case <-time.After(10 * time.Second):
+						err = bridge.handleRefundReady(ctx, refundReadyEvent)
+					}
+				}
+				if err != nil {
+					return errors.Wrap(err, "failed to handle refund ready")
 				}
 			}
 		case data := <-stellarSub:

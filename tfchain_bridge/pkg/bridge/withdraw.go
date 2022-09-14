@@ -63,12 +63,12 @@ func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired
 func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady subpkg.WithdrawReadyEvent) error {
 	burned, err := bridge.subClient.IsBurnedAlready(types.U64(withdrawReady.ID))
 	if err != nil {
-		return err
+		return nil
 	}
 
 	if burned {
 		log.Info().Msgf("tx with id: %d is burned already, skipping...", withdrawReady.ID)
-		return errors.New("tx burned already")
+		return nil
 	}
 
 	burnTx, err := bridge.subClient.GetBurnTransaction(types.U64(withdrawReady.ID))

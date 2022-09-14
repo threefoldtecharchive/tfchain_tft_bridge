@@ -53,12 +53,12 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent subpkg.RefundTransactionReadyEvent) error {
 	refunded, err := bridge.subClient.IsRefundedAlready(refundReadyEvent.Hash)
 	if err != nil {
-		return err
+		return nil
 	}
 
 	if refunded {
 		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", refundReadyEvent.Hash)
-		return pkg.ErrTransactionAlreadyRefunded
+		return nil
 	}
 
 	refund, err := bridge.subClient.GetRefundTransaction(refundReadyEvent.Hash)

@@ -386,7 +386,7 @@ func (w *StellarWallet) processTransaction(tx hProtocol.Transaction) ([]MintEven
 	if !tx.Successful {
 		return nil, nil
 	}
-	log.Info().Str("hash", tx.Hash).Msg("Received transaction on bridge stellar account")
+	log.Info().Str("hash", tx.Hash).Msg("received transaction on bridge stellar account")
 
 	effects, err := w.getTransactionEffects(tx.Hash)
 	if err != nil {
