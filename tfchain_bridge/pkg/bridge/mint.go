@@ -31,17 +31,17 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	}
 
 	if tx.Memo == "" {
-		log.Info().Msgf("transaction with hash %s has empty memo, refunding now", tx.Hash)
+		log.Info().Str("tx_id", tx.Hash).Msg("transaction has empty memo, refunding now")
 		return bridge.refund(context.Background(), receiver, depositedAmount.Int64(), tx)
 	}
 
 	if tx.MemoType == "return" {
-		log.Debug().Msgf("transaction with hash %s has a return memo hash, skipping this transaction", tx.Hash)
+		log.Debug().Str("tx_id", tx.Hash).Msg("transaction has a return memo hash, skipping this transaction")
 		// save cursor
 		cursor := tx.PagingToken()
 		err := bridge.blockPersistency.SaveStellarCursor(cursor)
 		if err != nil {
-			log.Err(err).Msgf("error while saving cursor")
+			log.Err(err).Msg("error while saving cursor")
 			return err
 		}
 		log.Info().Msg("stellar cursor saved")
@@ -55,7 +55,7 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	}
 
 	if minted {
-		log.Error().Msgf("transaction with hash %s is already minted", tx.Hash)
+		log.Error().Str("tx_id", tx.Hash).Msg("transaction is already minted")
 		return nil
 	}
 
@@ -94,19 +94,19 @@ func (bridge *Bridge) mint(senders map[string]*big.Int, tx hProtocol.Transaction
 	return nil
 }
 
-func (bridge *Bridge) handleMint(amount *big.Int, target substrate.AccountID, mintID string) error {
+func (bridge *Bridge) handleMint(amount *big.Int, target substrate.AccountID, hash string) error {
 	// TODO check if we already minted for this txid
-	minted, err := bridge.subClient.IsMintedAlready(mintID)
+	minted, err := bridge.subClient.IsMintedAlready(hash)
 	if err != nil && err != substrate.ErrMintTransactionNotFound {
-		return err
+		return nil
 	}
 
 	if minted {
-		log.Debug().Msgf("transaction with id %s is already minted", mintID)
-		return errors.New("transaction already minted")
+		log.Debug().Str("tx_id", hash).Msg("transaction is already minted")
+		return nil
 	}
 
-	return bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Identity, mintID, target, amount)
+	return bridge.subClient.ProposeOrVoteMintTransaction(bridge.subClient.Identity, hash, target, amount)
 }
 
 func (bridge *Bridge) getSubstrateAddressFromMemo(memo string) (string, error) {

@@ -38,7 +38,7 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 	}
 
 	if refunded {
-		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", refundExpiredEvent.Hash)
+		log.Info().Str("tx_id", refundExpiredEvent.Hash).Msg("tx is refunded already, skipping...")
 		return pkg.ErrTransactionAlreadyRefunded
 	}
 
@@ -57,7 +57,7 @@ func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent su
 	}
 
 	if refunded {
-		log.Info().Msgf("tx with stellar tx hash: %s is refunded already, skipping...", refundReadyEvent.Hash)
+		log.Info().Str("tx_id", refundReadyEvent.Hash).Msg("tx is refunded already, skipping...")
 		return nil
 	}
 
