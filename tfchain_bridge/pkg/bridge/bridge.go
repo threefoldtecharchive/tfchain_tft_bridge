@@ -444,6 +444,16 @@ func (bridge *Bridge) handleBurnExpired(ctx context.Context, burnExpiredEvent su
 		return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnExpiredEvent.BurnTransactionID))
 	}
 
+	burned, err := bridge.subClient.IsBurnedAlready(bridge.identity, burnExpiredEvent.BurnTransactionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if burned {
+		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnExpiredEvent.BurnTransactionID)
+		return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnExpiredEvent.BurnTransactionID))
+	}
+
 	amount := big.NewInt(int64(burnExpiredEvent.Amount))
 	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, string(burnExpiredEvent.Target), amount.Uint64(), uint64(burnExpiredEvent.BurnTransactionID))
 	if err != nil {
@@ -463,7 +473,7 @@ func (bridge *Bridge) submitBurnTransaction(ctx context.Context, burnReadyEvent 
 
 	if burned {
 		log.Info().Msgf("tx with id: %d is burned already, skipping...", burnReadyEvent.BurnTransactionID)
-		return nil, errors.New("tx burned already")
+		return bridge.subClient.SetBurnTransactionExecuted(bridge.identity, uint64(burnReadyEvent.BurnTransactionID))
 	}
 
 	burnTx, err := bridge.subClient.GetBurnTransaction(bridge.identity, burnReadyEvent.BurnTransactionID)
