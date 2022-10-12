@@ -16,11 +16,10 @@ import (
 // mint handler for stellar
 func (bridge *Bridge) mint(ctx context.Context, senders map[string]*big.Int, tx hProtocol.Transaction) error {
 	minted, err := bridge.subClient.IsMintedAlready(tx.Hash)
-	if err != nil && err != substrate.ErrMintTransactionNotFound {
-		if errors.Is(err, substrate.ErrMintTransactionNotFound) {
-			return pkg.ErrTransactionAlreadyMinted
+	if err != nil {
+		if !errors.Is(err, substrate.ErrMintTransactionNotFound) {
+			return err
 		}
-		return err
 	}
 
 	if minted {
