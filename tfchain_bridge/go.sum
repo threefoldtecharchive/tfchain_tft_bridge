@@ -506,6 +506,8 @@ github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.6-0.20220818144159-0abb
 github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.6-0.20220818144159-0abbabef7232/go.mod h1:5g1oM4Zu3BOaLpsKQ+O8PAv2kNuq+kPcA1VzFbsSqxE=
 github.com/threefoldtech/substrate-client v0.0.0-20220926145732-358d26632f2c h1:YG1xrSgH7FMvaXmrcNfPvOg8WakN4xjm/z1fJbtcYFQ=
 github.com/threefoldtech/substrate-client v0.0.0-20220926145732-358d26632f2c/go.mod h1:XGsrSO/mdaDkP1ERv4+ccaNDsbU97u27f7p/iQpKrTA=
+github.com/threefoldtech/substrate-client v0.0.0-20221122170748-17fe5e826020 h1:KGmGiTCa5YGOTo8RC/NE8+NQfzW9hgfT1gpHNumxrfQ=
+github.com/threefoldtech/substrate-client v0.0.0-20221122170748-17fe5e826020/go.mod h1:U8sNNYpXyxEKuLUm4jTacuWu43vU0iu2l+K8GXIcbLo=
 github.com/tinylib/msgp v1.0.2/go.mod h1:+d+yLhGm8mzTaHzB+wgMYrodPfmZrzkirds8fDWklFE=
 github.com/tklauser/go-sysconf v0.3.5/go.mod h1:MkWzOF4RMCshBAMXuhXJs64Rte09mITnppBXY/rYEFI=
 github.com/tklauser/go-sysconf v0.3.9 h1:JeUVdAOWhhxVcU6Eqr/ATFHgXk/mmiItdKeJPev3vTo=
