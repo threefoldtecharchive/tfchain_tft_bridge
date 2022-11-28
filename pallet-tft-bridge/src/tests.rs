@@ -108,7 +108,7 @@ fn mint_flow() {
             TFTBridgeModule::executed_mint_transactions("some_tx".as_bytes().to_vec()).unwrap();
         assert_eq!(executed_mint_tx.votes, 3);
 
-        let b = Balances::free_balance(bob());
+        let b = TFTBridgeModule::get_usable_balance(&bob());
         let balances_as_u128: u128 = b.saturated_into::<u128>();
         assert_eq!(balances_as_u128, 2750000000);
 
@@ -312,7 +312,7 @@ fn cannot_burn_more_than_balance_plus_fee() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
-        let b = Balances::free_balance(bob());
+        let b = TFTBridgeModule::get_usable_balance(&bob());
         let balances_as_u128: u128 = b.saturated_into::<u128>();
         assert_eq!(balances_as_u128, 2500000000);
 
@@ -334,7 +334,7 @@ fn burn_flow() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
-        let b = Balances::free_balance(bob());
+        let b = TFTBridgeModule::get_usable_balance(&bob());
         let balances_as_u128: u128 = b.saturated_into::<u128>();
         assert_eq!(balances_as_u128, 2500000000);
 
@@ -389,7 +389,7 @@ fn burn_flow() {
         let executed_burn_tx = TFTBridgeModule::burn_transactions(1);
         assert_eq!(executed_burn_tx.signatures.len(), 3);
 
-        let b = Balances::free_balance(bob());
+        let b = TFTBridgeModule::get_usable_balance(&bob());
         let balances_as_u128: u128 = b.saturated_into::<u128>();
         assert_eq!(balances_as_u128, 500000000);
 
@@ -408,7 +408,7 @@ fn burn_flow_expired() {
 
         run_to_block(1);
 
-        let b = Balances::free_balance(bob());
+        let b = TFTBridgeModule::get_usable_balance(&bob());
         let balances_as_u128: u128 = b.saturated_into::<u128>();
         assert_eq!(balances_as_u128, 2500000000);
 
