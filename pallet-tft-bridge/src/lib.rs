@@ -147,7 +147,7 @@ pub mod pallet {
     pub type DepositFee<T: Config> = StorageValue<_, u64, ValueQuery>;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config + pallet_balances::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         /// Currency type for this pallet.
@@ -472,15 +472,18 @@ impl<T: Config> Pallet<T> {
 
         let withdraw_fee = WithdrawFee::<T>::get();
         let withdraw_fee_b = BalanceOf::<T>::saturated_from(withdraw_fee);
-        let free_balance: BalanceOf<T> = T::Currency::free_balance(&source);
         // Make sure the user wants to swap more than the burn fee
         ensure!(
             amount > withdraw_fee_b,
             Error::<T>::AmountIsLessThanWithdrawFee
         );
 
+        let usuable_balance = Self::get_usable_balance(&source);
         // Make sure the user has enough balance to swap the amount
-        ensure!(free_balance >= amount, Error::<T>::NotEnoughBalanceToSwap);
+        ensure!(
+            amount <= usuable_balance,
+            Error::<T>::NotEnoughBalanceToSwap
+        );
 
         // transfer amount - fee to target account
         let value = T::Currency::withdraw(
@@ -875,5 +878,11 @@ impl<T: Config> Pallet<T> {
             Ok(_) => Ok(().into()),
             Err(_) => Err(Error::<T>::ValidatorNotExists.into()),
         }
+    }
+
+    fn get_usable_balance(account_id: &T::AccountId) -> BalanceOf<T> {
+        let balance = pallet_balances::pallet::Pallet::<T>::usable_balance(account_id);
+        let b = balance.saturated_into::<u128>();
+        BalanceOf::<T>::saturated_from(b)
     }
 }
