@@ -478,12 +478,9 @@ impl<T: Config> Pallet<T> {
             Error::<T>::AmountIsLessThanWithdrawFee
         );
 
-        let usuable_balance = Self::get_usable_balance(&source);
-        // Make sure the user has enough balance to swap the amount
-        ensure!(
-            amount <= usuable_balance,
-            Error::<T>::NotEnoughBalanceToSwap
-        );
+        let usable_balance = Self::get_usable_balance(&source);
+        // Make sure the user has enough usable balance to swap the amount
+        ensure!(amount <= usable_balance, Error::<T>::NotEnoughBalanceToSwap);
 
         // transfer amount - fee to target account
         let value = T::Currency::withdraw(
