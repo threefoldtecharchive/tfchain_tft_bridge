@@ -58,6 +58,9 @@ stellar_horizon_url: ""
 # and mints will happen again if they are not already executed
 rescan: false
 
+# If set to true, bridge will show debug output
+debug: false
+
 volume:
   size: 500Mi
   existingpersistentVolumeClaim: ""
