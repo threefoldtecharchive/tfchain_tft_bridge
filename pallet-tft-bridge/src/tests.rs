@@ -1,7 +1,7 @@
 use crate::{mock::*, Error};
 use frame_support::{
     assert_noop, assert_ok,
-    traits::{OnFinalize, OnInitialize},
+    traits::{LockableCurrency, OnFinalize, OnInitialize, WithdrawReasons},
 };
 use frame_system::RawOrigin;
 use sp_runtime::traits::SaturatedConversion;
@@ -308,7 +308,7 @@ fn proposing_burn_transaction_without_being_validator_fails() {
 }
 
 #[test]
-fn cannot_burn_more_than_balance_plus_fee() {
+fn burn_more_than_balance_plus_fee_fails() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
@@ -323,6 +323,39 @@ fn cannot_burn_more_than_balance_plus_fee() {
                     .as_bytes()
                     .to_vec(),
                 2500000001
+            ),
+            Error::<TestRuntime>::NotEnoughBalanceToSwap
+        );
+    });
+}
+
+#[test]
+fn burn_locked_tokens_fails() {
+    new_test_ext().execute_with(|| {
+        prepare_validators();
+
+        let free_balance = Balances::free_balance(&bob());
+        assert_eq!(free_balance, 2500000000);
+
+        let locked_balance = 1000000000;
+        let id: u64 = 1;
+        Balances::set_lock(
+            id.to_be_bytes(),
+            &bob(),
+            locked_balance,
+            WithdrawReasons::all(),
+        );
+
+        let usable_balance = TFTBridgeModule::get_usable_balance(&bob());
+        assert_eq!(usable_balance, 1500000000);
+
+        assert_noop!(
+            TFTBridgeModule::swap_to_stellar(
+                Origin::signed(bob()),
+                "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
+                    .as_bytes()
+                    .to_vec(),
+                usable_balance + 1
             ),
             Error::<TestRuntime>::NotEnoughBalanceToSwap
         );
