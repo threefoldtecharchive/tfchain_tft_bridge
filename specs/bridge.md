@@ -22,7 +22,7 @@ Note: There must always be as many validator daemons as there are signers on the
 
 ## Pallet TFT Bridge
 
-Is the main runtime functionality, distributes consensus for minting / burning tokens on TF Chain and manages signature passaround for the validators in order to execute a multisig transaction on the central Stellar bridge wallet.
+Is the main runtime functionality, distributes consensus for minting / withdrawing tokens on TF Chain and manages signature passaround for the validators in order to execute a multisig transaction on the central Stellar bridge wallet.
 
 Contains following extrinsic to call:
 
@@ -31,11 +31,11 @@ Contains following extrinsic to call:
 - `remove_validator(accountId)` (root call for the admin to setup the bridge)
 - `set_fee_account(accountId) (root call for the admin to setup the bridge fee wallet on tfchain)`
 - `set_deposit_fee(amount) (root call for the admin to setup the bridge desposit on tfchain)`
-- `set_burn_fee() (root call for the admin to setup the bridge burn fee on tfchain)`
+- `set_withdraw_fee() (root call for the admin to setup the bridge withdraw fee on tfchain)`
 #### Stellar -> TF Chain (minting on TF Chain)
 - `propose_or_vote_mint_transaction(transaction, target, amount)`
-#### TF Chain -> Stellar (burning on TF Chain)
-- `propose_burn_transaction_or_add_sig(transaction, target, amount, signature, stellarAccountAddress)`
+#### TF Chain -> Stellar (withdrawing on TF Chain)
+- `propose_withdraw_transaction_or_add_sig(transaction, target, amount, signature, stellarAccountAddress)`
 #### User callable extrinsic
 - `swap_to_stellar(target, amount)`
 
@@ -58,8 +58,8 @@ If more then *(number of validators / 2) + 1* voted that this mint transaction i
 
 ## TF Chain swap to Stellar
 
-A user will call `swap_to_stellar(optional target, amount)`. The validator daemons will pick up a an event containing information about the swap to stellar. The validators will call `propose_burn_transaction_or_add_sig` with the information about the stellar transaction.
+A user will call `swap_to_stellar(optional target, amount)`. The validator daemons will pick up a an event containing information about the swap to stellar. The validators will call `propose_withdraw_transaction_or_add_sig` with the information about the stellar transaction.
 
-If more then *(number of validators / 2) + 1* signatures are present on the burn transaction, the transaction is considered valid and the chain will emit an event that the transaction is ready to be submitted.
+If more then *(number of validators / 2) + 1* signatures are present on the withdraw transaction, the transaction is considered valid and the chain will emit an event that the transaction is ready to be submitted.
 
 The daemons will see this transaction ready event and retrieve the transcation object from storage. They will submit the transaction, along with all the signatures to the stellar network. Only one validator will succeed in this operation, the other validators will get an error, but they can ignore that because stellar has a double spend protection mechanism.
