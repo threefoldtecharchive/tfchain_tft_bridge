@@ -50,16 +50,16 @@ func processEventRecords(events *substrate.EventRecords) error {
 		log.Info().Msgf("found refund transaction ready event %s", string(e.RefundTransactionHash))
 	}
 
-	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction created event")
+	for _, e := range events.TFTBridgeModule_WithdrawTransactionCreated {
+		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction created event")
 	}
 
-	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction ready event")
+	for _, e := range events.TFTBridgeModule_WithdrawTransactionReady {
+		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction ready event")
 	}
 
-	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction expired event")
+	for _, e := range events.TFTBridgeModule_WithdrawTransactionExpired {
+		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction expired event")
 	}
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {

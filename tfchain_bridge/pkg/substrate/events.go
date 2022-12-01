@@ -109,27 +109,27 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 		})
 	}
 
-	for _, e := range events.TFTBridgeModule_BurnTransactionCreated {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction created event")
+	for _, e := range events.TFTBridgeModule_WithdrawTransactionCreated {
+		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction created event")
 		withdrawCreatedEvents = append(withdrawCreatedEvents, WithdrawCreatedEvent{
-			ID:     uint64(e.BurnTransactionID),
+			ID:     uint64(e.WithdrawTransactionID),
 			Source: e.Source,
 			Target: string(e.Target),
 			Amount: uint64(e.Amount),
 		})
 	}
 
-	for _, e := range events.TFTBridgeModule_BurnTransactionReady {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction ready event")
+	for _, e := range events.TFTBridgeModule_WithdrawTransactionReady {
+		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction ready event")
 		withdrawReadyEvents = append(withdrawReadyEvents, WithdrawReadyEvent{
-			ID: uint64(e.BurnTransactionID),
+			ID: uint64(e.WithdrawTransactionID),
 		})
 	}
 
-	for _, e := range events.TFTBridgeModule_BurnTransactionExpired {
-		log.Info().Uint64("ID", uint64(e.BurnTransactionID)).Msg("found burn transaction expired event")
+	for _, e := range events.TFTBridgeModule_WithdrawTransactionExpired {
+		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction expired event")
 		withdrawExpiredEvents = append(withdrawExpiredEvents, WithdrawExpiredEvent{
-			ID:     uint64(e.BurnTransactionID),
+			ID:     uint64(e.WithdrawTransactionID),
 			Target: string(e.Target),
 			Amount: uint64(e.Amount),
 		})

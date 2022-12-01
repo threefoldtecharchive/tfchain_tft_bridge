@@ -28,5 +28,5 @@ type StellarSignature struct {
 
 var ErrTransactionAlreadyRefunded = errors.New("transaction is already refunded")
 var ErrTransactionAlreadyMinted = errors.New("transaction is already minted")
-var ErrTransactionAlreadyBurned = errors.New("transaction is already burned")
+var ErrTransactionAlreadyWithdrawn = errors.New("transaction is already withdrawn")
 var ErrNoSignatures = errors.New("transaction has no signatures")

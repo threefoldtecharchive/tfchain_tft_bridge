@@ -14,14 +14,14 @@ import (
 )
 
 func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg.WithdrawCreatedEvent) error {
-	burned, err := bridge.subClient.IsBurnedAlready(types.U64(withdraw.ID))
+	withdrawn, err := bridge.subClient.IsAlreadyWithdrawn(types.U64(withdraw.ID))
 	if err != nil {
 		return err
 	}
 
-	if burned {
-		log.Info().Uint64("ID", uint64(withdraw.ID)).Msgf("tx is burned already, skipping...")
-		return pkg.ErrTransactionAlreadyBurned
+	if withdrawn {
+		log.Info().Uint64("ID", uint64(withdraw.ID)).Msgf("tx is already withdrawn, skipping...")
+		return pkg.ErrTransactionAlreadyWithdrawn
 	}
 
 	if err := bridge.wallet.CheckAccount(withdraw.Target); err != nil {
@@ -39,7 +39,7 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 
 func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired subpkg.WithdrawExpiredEvent) error {
 	if err := bridge.wallet.CheckAccount(withdrawExpired.Target); err != nil {
-		log.Info().Uint64("ID", uint64(withdrawExpired.ID)).Msg("tx is an invalid burn transaction, setting burn as executed since we have no way to recover...")
+		log.Info().Uint64("ID", uint64(withdrawExpired.ID)).Msg("tx is an invalid withdraw transaction, setting withdraw as executed since we have no way to recover...")
 		return bridge.subClient.RetrySetWithdrawExecuted(ctx, withdrawExpired.ID)
 	}
 
@@ -53,28 +53,28 @@ func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired
 }
 
 func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady subpkg.WithdrawReadyEvent) error {
-	burned, err := bridge.subClient.IsBurnedAlready(types.U64(withdrawReady.ID))
+	withdrawn, err := bridge.subClient.IsAlreadyWithdrawn(types.U64(withdrawReady.ID))
 	if err != nil {
 		return err
 	}
 
-	if burned {
-		log.Info().Uint64("ID", uint64(withdrawReady.ID)).Msg("tx is burned already, skipping...")
-		return pkg.ErrTransactionAlreadyBurned
+	if withdrawn {
+		log.Info().Uint64("ID", uint64(withdrawReady.ID)).Msg("tx is already withdrawn, skipping...")
+		return pkg.ErrTransactionAlreadyWithdrawn
 	}
 
-	burnTx, err := bridge.subClient.GetBurnTransaction(types.U64(withdrawReady.ID))
+	withdrawTx, err := bridge.subClient.GetWithdrawTransaction(types.U64(withdrawReady.ID))
 	if err != nil {
 		return err
 	}
 
-	if len(burnTx.Signatures) == 0 {
+	if len(withdrawTx.Signatures) == 0 {
 		log.Info().Msg("found 0 signatures, aborting")
 		return pkg.ErrNoSignatures
 	}
 
 	// todo add memo hash
-	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, burnTx.Target, uint64(burnTx.Amount), "", burnTx.Signatures, int64(burnTx.SequenceNumber))
+	err = bridge.wallet.CreatePaymentWithSignaturesAndSubmit(ctx, withdrawTx.Target, uint64(withdrawTx.Amount), "", withdrawTx.Signatures, int64(withdrawTx.SequenceNumber))
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (bridge *Bridge) handleWithdrawReady(ctx context.Context, withdrawReady sub
 }
 
 func (bridge *Bridge) handleBadWithdraw(ctx context.Context, withdraw subpkg.WithdrawCreatedEvent) error {
-	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("tx is an invalid burn transaction, minting on chain again...")
+	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("tx is an invalid withdraw transaction, minting on chain again...")
 	mintID := fmt.Sprintf("refund-%d", withdraw.ID)
 
 	minted, err := bridge.subClient.IsMintedAlready(mintID)
@@ -104,6 +104,6 @@ func (bridge *Bridge) handleBadWithdraw(ctx context.Context, withdraw subpkg.Wit
 		return err
 	}
 
-	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("setting invalid burn transaction as executed")
+	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("setting invalid withdraw transaction as executed")
 	return bridge.subClient.RetrySetWithdrawExecuted(ctx, withdraw.ID)
 }
