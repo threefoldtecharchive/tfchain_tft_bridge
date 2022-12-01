@@ -93,7 +93,7 @@ parameter_types! {
 impl Config for TestRuntime {
     type Event = Event;
     type Currency = Balances;
-    type Burn = ();
+    type Withdraw = ();
     type RestrictedOrigin = EnsureRoot<Self::AccountId>;
     type RetryInterval = RetryInterval;
 }

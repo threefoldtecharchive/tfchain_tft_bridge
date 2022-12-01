@@ -39,11 +39,11 @@ pub struct MintTransaction<AccountId, BlockNumber> {
     pub votes: u32,
 }
 
-// BurnTransaction contains all the information about
-// TF Chain -> Stellar burn transaction
+// WithdrawTransaction contains all the information about
+// TF Chain -> Stellar withdraw transaction
 // Transaction is ready when (number of validators / 2) + 1 signatures are present
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
-pub struct BurnTransaction<BlockNumber> {
+pub struct WithdrawTransaction<BlockNumber> {
     pub block: BlockNumber,
     pub amount: u64,
     pub target: Vec<u8>,
@@ -115,14 +115,14 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn burn_transactions)]
-    pub type BurnTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, u64, BurnTransaction<T::BlockNumber>, ValueQuery>;
+    #[pallet::getter(fn withdraw_transactions)]
+    pub type WithdrawTransactions<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, WithdrawTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn executed_burn_transactions)]
-    pub type ExecutedBurnTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, u64, BurnTransaction<T::BlockNumber>, ValueQuery>;
+    #[pallet::getter(fn executed_withdraw_transactions)]
+    pub type ExecutedWithdrawTransactions<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, WithdrawTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn refund_transactions)]
@@ -135,8 +135,8 @@ pub mod pallet {
         StorageMap<_, Blake2_128Concat, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
 
     #[pallet::storage]
-    #[pallet::getter(fn burn_transaction_id)]
-    pub type BurnTransactionID<T: Config> = StorageValue<_, u64, ValueQuery>;
+    #[pallet::getter(fn withdraw_transaction_id)]
+    pub type WithdrawTransactionID<T: Config> = StorageValue<_, u64, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn withdraw_fee)]
@@ -153,8 +153,8 @@ pub mod pallet {
         /// Currency type for this pallet.
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
-        /// Handler for the unbalanced decrement when slashing (burning collateral)
-        type Burn: OnUnbalanced<NegativeImbalanceOf<Self>>;
+        /// Handler for the unbalanced decrement when slashing (withdrawing collateral)
+        type Withdraw: OnUnbalanced<NegativeImbalanceOf<Self>>;
 
         /// Origin for restricted extrinsics
         /// Can be the root or another origin configured in the runtime
@@ -172,13 +172,13 @@ pub mod pallet {
         MintTransactionVoted(Vec<u8>),
         MintCompleted(MintTransaction<T::AccountId, T::BlockNumber>),
         MintTransactionExpired(Vec<u8>, u64, T::AccountId),
-        // Burn events
-        BurnTransactionCreated(u64, T::AccountId, Vec<u8>, u64),
-        BurnTransactionProposed(u64, Vec<u8>, u64),
-        BurnTransactionSignatureAdded(u64, StellarSignature),
-        BurnTransactionReady(u64),
-        BurnTransactionProcessed(BurnTransaction<T::BlockNumber>),
-        BurnTransactionExpired(u64, Vec<u8>, u64),
+        // Withdraw events
+        WithdrawTransactionCreated(u64, T::AccountId, Vec<u8>, u64),
+        WithdrawTransactionProposed(u64, Vec<u8>, u64),
+        WithdrawTransactionSignatureAdded(u64, StellarSignature),
+        WithdrawTransactionReady(u64),
+        WithdrawTransactionProcessed(WithdrawTransaction<T::BlockNumber>),
+        WithdrawTransactionExpired(u64, Vec<u8>, u64),
         // Refund events
         RefundTransactionCreated(Vec<u8>, Vec<u8>, u64),
         RefundTransactionsignatureAdded(Vec<u8>, StellarSignature),
@@ -196,12 +196,12 @@ pub mod pallet {
         MintTransactionExists,
         MintTransactionAlreadyExecuted,
         MintTransactionNotExists,
-        BurnTransactionExists,
-        BurnTransactionNotExists,
-        BurnSignatureExists,
-        EnoughBurnSignaturesPresent,
+        WithdrawTransactionExists,
+        WithdrawTransactionNotExists,
+        WithdrawSignatureExists,
+        EnoughWithdrawSignaturesPresent,
         RefundSignatureExists,
-        BurnTransactionAlreadyExecuted,
+        WithdrawTransactionAlreadyExecuted,
         RefundTransactionNotExists,
         RefundTransactionAlreadyExecuted,
         EnoughRefundSignaturesPresent,
@@ -253,7 +253,7 @@ pub mod pallet {
         fn on_finalize(block: T::BlockNumber) {
             let current_block_u64: u64 = block.saturated_into::<u64>();
 
-            for (tx_id, mut tx) in BurnTransactions::<T>::iter() {
+            for (tx_id, mut tx) in WithdrawTransactions::<T>::iter() {
                 let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
                 // if x blocks have passed since the tx got submitted
                 // we can safely assume this tx is fault
@@ -265,10 +265,12 @@ pub mod pallet {
                     tx.block = block;
 
                     // update tx in storage
-                    BurnTransactions::<T>::insert(&tx_id, &tx);
+                    WithdrawTransactions::<T>::insert(&tx_id, &tx);
 
                     // Emit event
-                    Self::deposit_event(Event::BurnTransactionExpired(tx_id, tx.target, tx.amount));
+                    Self::deposit_event(Event::WithdrawTransactionExpired(
+                        tx_id, tx.target, tx.amount,
+                    ));
                 }
             }
 
@@ -346,7 +348,7 @@ pub mod pallet {
             amount: BalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let source = ensure_signed(origin)?;
-            Self::burn_tft(source, target_stellar_address, amount)
+            Self::withdraw_tft(source, target_stellar_address, amount)
         }
 
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
@@ -361,7 +363,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-        pub fn propose_burn_transaction_or_add_sig(
+        pub fn propose_withdraw_transaction_or_add_sig(
             origin: OriginFor<T>,
             transaction_id: u64,
             target: Vec<u8>,
@@ -371,7 +373,7 @@ pub mod pallet {
             sequence_number: u64,
         ) -> DispatchResultWithPostInfo {
             let validator = ensure_signed(origin)?;
-            Self::propose_stellar_burn_transaction_or_add_sig(
+            Self::propose_stellar_withdraw_transaction_or_add_sig(
                 validator,
                 transaction_id,
                 target,
@@ -383,12 +385,12 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-        pub fn set_burn_transaction_executed(
+        pub fn set_withdraw_transaction_executed(
             origin: OriginFor<T>,
             transaction_id: u64,
         ) -> DispatchResultWithPostInfo {
             let validator = ensure_signed(origin)?;
-            Self::set_stellar_burn_transaction_executed(validator, transaction_id)
+            Self::set_stellar_withdraw_transaction_executed(validator, transaction_id)
         }
 
         #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
@@ -462,7 +464,7 @@ impl<T: Config> Pallet<T> {
         Ok(().into())
     }
 
-    pub fn burn_tft(
+    pub fn withdraw_tft(
         source: T::AccountId,
         target_stellar_address: Vec<u8>,
         amount: BalanceOf<T>,
@@ -472,7 +474,7 @@ impl<T: Config> Pallet<T> {
 
         let withdraw_fee = WithdrawFee::<T>::get();
         let withdraw_fee_b = BalanceOf::<T>::saturated_from(withdraw_fee);
-        // Make sure the user wants to swap more than the burn fee
+        // Make sure the user wants to swap more than the withdraw fee
         ensure!(
             amount > withdraw_fee_b,
             Error::<T>::AmountIsLessThanWithdrawFee
@@ -489,36 +491,36 @@ impl<T: Config> Pallet<T> {
             WithdrawReasons::TRANSFER,
             ExistenceRequirement::KeepAlive,
         )?;
-        T::Burn::on_unbalanced(value);
+        T::Withdraw::on_unbalanced(value);
 
         // transfer withdraw fee to fee wallet
         if let Some(fee_account) = FeeAccount::<T>::get() {
             T::Currency::deposit_creating(&fee_account, withdraw_fee_b);
         }
 
-        // increment burn transaction id
-        let mut burn_id = BurnTransactionID::<T>::get();
-        burn_id += 1;
-        BurnTransactionID::<T>::put(burn_id);
+        // increment withdraw transaction id
+        let mut withdraw_id = WithdrawTransactionID::<T>::get();
+        withdraw_id += 1;
+        WithdrawTransactionID::<T>::put(withdraw_id);
 
-        let burn_amount_as_u64 = amount.saturated_into::<u64>() - withdraw_fee;
-        Self::deposit_event(Event::BurnTransactionCreated(
-            burn_id,
+        let withdraw_amount_as_u64 = amount.saturated_into::<u64>() - withdraw_fee;
+        Self::deposit_event(Event::WithdrawTransactionCreated(
+            withdraw_id,
             source,
             target_stellar_address.clone(),
-            burn_amount_as_u64,
+            withdraw_amount_as_u64,
         ));
 
         // Create transaction with empty signatures
         let now = <frame_system::Pallet<T>>::block_number();
-        let tx = BurnTransaction {
+        let tx = WithdrawTransaction {
             block: now,
-            amount: burn_amount_as_u64,
+            amount: withdraw_amount_as_u64,
             target: target_stellar_address,
             signatures: Vec::new(),
             sequence_number: 0,
         };
-        BurnTransactions::<T>::insert(burn_id, &tx);
+        WithdrawTransactions::<T>::insert(withdraw_id, &tx);
 
         Ok(().into())
     }
@@ -637,7 +639,7 @@ impl<T: Config> Pallet<T> {
         Ok(().into())
     }
 
-    pub fn propose_stellar_burn_transaction_or_add_sig(
+    pub fn propose_stellar_withdraw_transaction_or_add_sig(
         validator: T::AccountId,
         tx_id: u64,
         target: Vec<u8>,
@@ -650,27 +652,27 @@ impl<T: Config> Pallet<T> {
 
         // check if it already has been executed in the past
         ensure!(
-            !ExecutedBurnTransactions::<T>::contains_key(tx_id),
-            Error::<T>::BurnTransactionAlreadyExecuted
+            !ExecutedWithdrawTransactions::<T>::contains_key(tx_id),
+            Error::<T>::WithdrawTransactionAlreadyExecuted
         );
 
-        let mut burn_tx = BurnTransactions::<T>::get(tx_id);
+        let mut withdraw_tx = WithdrawTransactions::<T>::get(tx_id);
         ensure!(
-            BurnTransactions::<T>::contains_key(tx_id),
-            Error::<T>::BurnTransactionNotExists
+            WithdrawTransactions::<T>::contains_key(tx_id),
+            Error::<T>::WithdrawTransactionNotExists
         );
 
         ensure!(
-            burn_tx.amount == amount,
+            withdraw_tx.amount == amount,
             Error::<T>::WrongParametersProvided
         );
         ensure!(
-            burn_tx.target == target,
+            withdraw_tx.target == target,
             Error::<T>::WrongParametersProvided
         );
 
-        if BurnTransactions::<T>::contains_key(tx_id) {
-            return Self::add_stellar_sig_burn_transaction(
+        if WithdrawTransactions::<T>::contains_key(tx_id) {
+            return Self::add_stellar_sig_withdraw_transaction(
                 tx_id,
                 signature,
                 stellar_pub_key,
@@ -680,29 +682,34 @@ impl<T: Config> Pallet<T> {
 
         let now = <frame_system::Pallet<T>>::block_number();
 
-        burn_tx.block = now;
-        burn_tx.sequence_number = sequence_number;
-        BurnTransactions::<T>::insert(tx_id.clone(), &burn_tx);
+        withdraw_tx.block = now;
+        withdraw_tx.sequence_number = sequence_number;
+        WithdrawTransactions::<T>::insert(tx_id.clone(), &withdraw_tx);
 
-        Self::add_stellar_sig_burn_transaction(tx_id, signature, stellar_pub_key, sequence_number)?;
+        Self::add_stellar_sig_withdraw_transaction(
+            tx_id,
+            signature,
+            stellar_pub_key,
+            sequence_number,
+        )?;
 
-        Self::deposit_event(Event::BurnTransactionProposed(tx_id, target, amount));
+        Self::deposit_event(Event::WithdrawTransactionProposed(tx_id, target, amount));
 
         Ok(().into())
     }
 
-    pub fn add_stellar_sig_burn_transaction(
+    pub fn add_stellar_sig_withdraw_transaction(
         tx_id: u64,
         signature: Vec<u8>,
         stellar_pub_key: Vec<u8>,
         sequence_number: u64,
     ) -> DispatchResultWithPostInfo {
-        let mut tx = BurnTransactions::<T>::get(&tx_id);
+        let mut tx = WithdrawTransactions::<T>::get(&tx_id);
 
         let validators = Validators::<T>::get();
         if tx.signatures.len() == (validators.len() / 2) + 1 {
             return Err(DispatchErrorWithPostInfo::from(
-                Error::<T>::EnoughBurnSignaturesPresent,
+                Error::<T>::EnoughWithdrawSignaturesPresent,
             ));
         }
 
@@ -711,11 +718,11 @@ impl<T: Config> Pallet<T> {
             !tx.signatures
                 .iter()
                 .any(|sig| sig.stellar_pub_key == stellar_pub_key),
-            Error::<T>::BurnSignatureExists
+            Error::<T>::WithdrawSignatureExists
         );
         ensure!(
             !tx.signatures.iter().any(|sig| sig.signature == signature),
-            Error::<T>::BurnSignatureExists
+            Error::<T>::WithdrawSignatureExists
         );
 
         // add the signature
@@ -726,41 +733,41 @@ impl<T: Config> Pallet<T> {
 
         tx.sequence_number = sequence_number;
         tx.signatures.push(stellar_signature.clone());
-        BurnTransactions::<T>::insert(tx_id, &tx);
-        Self::deposit_event(Event::BurnTransactionSignatureAdded(
+        WithdrawTransactions::<T>::insert(tx_id, &tx);
+        Self::deposit_event(Event::WithdrawTransactionSignatureAdded(
             tx_id,
             stellar_signature,
         ));
 
         if tx.signatures.len() >= (validators.len() / 2) + 1 {
-            Self::deposit_event(Event::BurnTransactionReady(tx_id));
-            BurnTransactions::<T>::insert(tx_id, tx);
+            Self::deposit_event(Event::WithdrawTransactionReady(tx_id));
+            WithdrawTransactions::<T>::insert(tx_id, tx);
         }
 
         Ok(().into())
     }
 
-    pub fn set_stellar_burn_transaction_executed(
+    pub fn set_stellar_withdraw_transaction_executed(
         validator: T::AccountId,
         tx_id: u64,
     ) -> DispatchResultWithPostInfo {
         Self::check_if_validator_exists(validator)?;
 
         ensure!(
-            !ExecutedBurnTransactions::<T>::contains_key(tx_id),
-            Error::<T>::BurnTransactionAlreadyExecuted
+            !ExecutedWithdrawTransactions::<T>::contains_key(tx_id),
+            Error::<T>::WithdrawTransactionAlreadyExecuted
         );
         ensure!(
-            BurnTransactions::<T>::contains_key(tx_id),
-            Error::<T>::BurnTransactionNotExists
+            WithdrawTransactions::<T>::contains_key(tx_id),
+            Error::<T>::WithdrawTransactionNotExists
         );
 
-        let tx = BurnTransactions::<T>::get(tx_id);
+        let tx = WithdrawTransactions::<T>::get(tx_id);
 
-        BurnTransactions::<T>::remove(tx_id);
-        ExecutedBurnTransactions::<T>::insert(tx_id, &tx);
+        WithdrawTransactions::<T>::remove(tx_id);
+        ExecutedWithdrawTransactions::<T>::insert(tx_id, &tx);
 
-        Self::deposit_event(Event::BurnTransactionProcessed(tx));
+        Self::deposit_event(Event::WithdrawTransactionProcessed(tx));
 
         Ok(().into())
     }
