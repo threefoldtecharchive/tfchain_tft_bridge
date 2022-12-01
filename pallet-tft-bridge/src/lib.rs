@@ -1,13 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-/// Edit this file to define custom logic or remove it if it is not needed.
-/// Learn more about FRAME and the core library of Substrate FRAME pallets:
-/// https://substrate.dev/docs/en/knowledgebase/runtime/frame
-use sp_std::prelude::*;
-
-use codec::{Decode, Encode};
-use frame_support::dispatch::DispatchErrorWithPostInfo;
 use frame_support::{
+    dispatch::DispatchErrorWithPostInfo,
     ensure, log,
     traits::{
         Currency, EnsureOrigin, ExistenceRequirement, OnUnbalanced, ReservableCurrency,
@@ -15,12 +9,15 @@ use frame_support::{
     },
 };
 use frame_system::{self as system, ensure_signed};
-use scale_info::TypeInfo;
 use sp_runtime::SaturatedConversion;
+
+use sp_std::prelude::*;
 use substrate_stellar_sdk as stellar;
 
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
+
+pub mod types;
 
 #[cfg(test)]
 mod mock;
@@ -28,49 +25,11 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-// MintTransaction contains all the information about
-// Stellar -> TF Chain minting transaction.
-// if the votes field is larger then (number of validators / 2) + 1 , the transaction will be minted
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
-pub struct MintTransaction<AccountId, BlockNumber> {
-    pub amount: u64,
-    pub target: AccountId,
-    pub block: BlockNumber,
-    pub votes: u32,
-}
-
-// WithdrawTransaction contains all the information about
-// TF Chain -> Stellar withdraw transaction
-// Transaction is ready when (number of validators / 2) + 1 signatures are present
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
-pub struct WithdrawTransaction<BlockNumber> {
-    pub block: BlockNumber,
-    pub amount: u64,
-    pub target: Vec<u8>,
-    pub signatures: Vec<StellarSignature>,
-    pub sequence_number: u64,
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
-pub struct RefundTransaction<BlockNumber> {
-    pub block: BlockNumber,
-    pub amount: u64,
-    pub target: Vec<u8>,
-    pub tx_hash: Vec<u8>,
-    pub signatures: Vec<StellarSignature>,
-    pub sequence_number: u64,
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
-pub struct StellarSignature {
-    pub signature: Vec<u8>,
-    pub stellar_pub_key: Vec<u8>,
-}
-
 // Definition of the pallet logic, to be aggregated at runtime definition
 // through `construct_runtime`.
 #[frame_support::pallet]
 pub mod pallet {
+    use super::types;
     use super::*;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -100,7 +59,7 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         Vec<u8>,
-        MintTransaction<T::AccountId, T::BlockNumber>,
+        types::MintTransaction<T::AccountId, T::BlockNumber>,
         OptionQuery,
     >;
 
@@ -110,33 +69,71 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         Vec<u8>,
-        MintTransaction<T::AccountId, T::BlockNumber>,
+        types::MintTransaction<T::AccountId, T::BlockNumber>,
         OptionQuery,
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn burn_transactions)]
+    pub type BurnTransactions<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, types::BurnTransaction<T::BlockNumber>, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn executed_burn_transactions)]
+    pub type ExecutedBurnTransactions<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, types::BurnTransaction<T::BlockNumber>, ValueQuery>;
+
+    #[pallet::storage]
     #[pallet::getter(fn withdraw_transactions)]
-    pub type WithdrawTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, u64, WithdrawTransaction<T::BlockNumber>, ValueQuery>;
+    pub type WithdrawTransactions<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        types::WithdrawTransaction<T::BlockNumber>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn executed_withdraw_transactions)]
-    pub type ExecutedWithdrawTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, u64, WithdrawTransaction<T::BlockNumber>, ValueQuery>;
+    pub type ExecutedWithdrawTransactions<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u64,
+        types::WithdrawTransaction<T::BlockNumber>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn refund_transactions)]
-    pub type RefundTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
+    pub type RefundTransactions<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        Vec<u8>,
+        types::RefundTransaction<T::BlockNumber>,
+        ValueQuery,
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn executed_refund_transactions)]
-    pub type ExecutedRefundTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, Vec<u8>, RefundTransaction<T::BlockNumber>, ValueQuery>;
+    pub type ExecutedRefundTransactions<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        Vec<u8>,
+        types::RefundTransaction<T::BlockNumber>,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn burn_transaction_id)]
+    pub type BurnTransactionID<T: Config> = StorageValue<_, u64, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn withdraw_transaction_id)]
     pub type WithdrawTransactionID<T: Config> = StorageValue<_, u64, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn burn_fee)]
+    pub type BurnFee<T: Config> = StorageValue<_, u64, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn withdraw_fee)]
@@ -145,6 +142,10 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn deposit_fee)]
     pub type DepositFee<T: Config> = StorageValue<_, u64, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn pallet_version)]
+    pub type PalletVersion<T> = StorageValue<_, types::StorageVersion, ValueQuery>;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_balances::Config {
@@ -170,20 +171,20 @@ pub mod pallet {
         // Minting events
         MintTransactionProposed(Vec<u8>, T::AccountId, u64),
         MintTransactionVoted(Vec<u8>),
-        MintCompleted(MintTransaction<T::AccountId, T::BlockNumber>),
+        MintCompleted(types::MintTransaction<T::AccountId, T::BlockNumber>),
         MintTransactionExpired(Vec<u8>, u64, T::AccountId),
         // Withdraw events
         WithdrawTransactionCreated(u64, T::AccountId, Vec<u8>, u64),
         WithdrawTransactionProposed(u64, Vec<u8>, u64),
-        WithdrawTransactionSignatureAdded(u64, StellarSignature),
+        WithdrawTransactionSignatureAdded(u64, types::StellarSignature),
         WithdrawTransactionReady(u64),
-        WithdrawTransactionProcessed(WithdrawTransaction<T::BlockNumber>),
+        WithdrawTransactionProcessed(types::WithdrawTransaction<T::BlockNumber>),
         WithdrawTransactionExpired(u64, Vec<u8>, u64),
         // Refund events
         RefundTransactionCreated(Vec<u8>, Vec<u8>, u64),
-        RefundTransactionsignatureAdded(Vec<u8>, StellarSignature),
+        RefundTransactionsignatureAdded(Vec<u8>, types::StellarSignature),
         RefundTransactionReady(Vec<u8>),
-        RefundTransactionProcessed(RefundTransaction<T::BlockNumber>),
+        RefundTransactionProcessed(types::RefundTransaction<T::BlockNumber>),
         RefundTransactionExpired(Vec<u8>, Vec<u8>, u64),
     }
 
@@ -431,7 +432,7 @@ use frame_support::pallet_prelude::DispatchResultWithPostInfo;
 impl<T: Config> Pallet<T> {
     pub fn mint_tft(
         tx_id: Vec<u8>,
-        mut tx: MintTransaction<T::AccountId, T::BlockNumber>,
+        mut tx: types::MintTransaction<T::AccountId, T::BlockNumber>,
     ) -> DispatchResultWithPostInfo {
         let deposit_fee = DepositFee::<T>::get();
         ensure!(
@@ -513,7 +514,7 @@ impl<T: Config> Pallet<T> {
 
         // Create transaction with empty signatures
         let now = <frame_system::Pallet<T>>::block_number();
-        let tx = WithdrawTransaction {
+        let tx = types::WithdrawTransaction {
             block: now,
             amount: withdraw_amount_as_u64,
             target: target_stellar_address,
@@ -548,7 +549,7 @@ impl<T: Config> Pallet<T> {
         }
 
         let now = <frame_system::Pallet<T>>::block_number();
-        let tx = RefundTransaction {
+        let tx = types::RefundTransaction {
             block: now,
             target: target.clone(),
             amount,
@@ -593,7 +594,7 @@ impl<T: Config> Pallet<T> {
         }
 
         let now = <frame_system::Pallet<T>>::block_number();
-        let tx = MintTransaction {
+        let tx = types::MintTransaction {
             amount,
             target: target.clone(),
             block: now,
@@ -726,7 +727,7 @@ impl<T: Config> Pallet<T> {
         );
 
         // add the signature
-        let stellar_signature = StellarSignature {
+        let stellar_signature = types::StellarSignature {
             signature,
             stellar_pub_key,
         };
@@ -800,7 +801,7 @@ impl<T: Config> Pallet<T> {
         );
 
         // add the signature
-        let stellar_signature = StellarSignature {
+        let stellar_signature = types::StellarSignature {
             signature,
             stellar_pub_key,
         };
