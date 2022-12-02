@@ -17,6 +17,7 @@ use substrate_stellar_sdk as stellar;
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
 
+pub mod migration_burn_withdraw;
 pub mod types;
 
 #[cfg(test)]
