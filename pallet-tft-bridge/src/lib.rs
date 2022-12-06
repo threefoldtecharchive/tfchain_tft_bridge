@@ -75,16 +75,6 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn burn_transactions)]
-    pub type BurnTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, u64, types::BurnTransaction<T::BlockNumber>, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn executed_burn_transactions)]
-    pub type ExecutedBurnTransactions<T: Config> =
-        StorageMap<_, Blake2_128Concat, u64, types::BurnTransaction<T::BlockNumber>, ValueQuery>;
-
-    #[pallet::storage]
     #[pallet::getter(fn withdraw_transactions)]
     pub type WithdrawTransactions<T: Config> = StorageMap<
         _,
@@ -125,16 +115,8 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn burn_transaction_id)]
-    pub type BurnTransactionID<T: Config> = StorageValue<_, u64, ValueQuery>;
-
-    #[pallet::storage]
     #[pallet::getter(fn withdraw_transaction_id)]
     pub type WithdrawTransactionID<T: Config> = StorageValue<_, u64, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn burn_fee)]
-    pub type BurnFee<T: Config> = StorageValue<_, u64, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn withdraw_fee)]
