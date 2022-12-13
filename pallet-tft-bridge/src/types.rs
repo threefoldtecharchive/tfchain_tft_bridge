@@ -26,18 +26,6 @@ pub struct MintTransaction<AccountId, BlockNumber> {
     pub votes: u32,
 }
 
-// BurnTransaction contains all the information about
-// TF Chain -> Stellar withdraw transaction
-// Transaction is ready when (number of validators / 2) + 1 signatures are present
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
-pub struct BurnTransaction<BlockNumber> {
-    pub block: BlockNumber,
-    pub amount: u64,
-    pub target: Vec<u8>,
-    pub signatures: Vec<StellarSignature>,
-    pub sequence_number: u64,
-}
-
 // WithdrawTransaction contains all the information about
 // TF Chain -> Stellar withdraw transaction
 // Transaction is ready when (number of validators / 2) + 1 signatures are present

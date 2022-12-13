@@ -26,7 +26,7 @@ pub type BurnTransactions<T: Config> = StorageMap<
     Pallet<T>,
     Blake2_128Concat,
     u64,
-    types::BurnTransaction<<T as system::Config>::BlockNumber>,
+    super::types::v1::BurnTransaction<<T as system::Config>::BlockNumber>,
     ValueQuery,
 >;
 
@@ -35,7 +35,7 @@ pub type ExecutedBurnTransactions<T: Config> = StorageMap<
     Pallet<T>,
     Blake2_128Concat,
     u64,
-    types::BurnTransaction<<T as system::Config>::BlockNumber>,
+    super::types::v1::BurnTransaction<<T as system::Config>::BlockNumber>,
     ValueQuery,
 >;
 
