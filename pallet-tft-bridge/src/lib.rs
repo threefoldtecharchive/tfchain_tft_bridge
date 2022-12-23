@@ -297,6 +297,7 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
         pub fn add_bridge_validator(
             origin: OriginFor<T>,
@@ -306,6 +307,7 @@ pub mod pallet {
             Self::add_validator_account(target)
         }
 
+        #[pallet::call_index(1)]
         #[pallet::weight(10_000)]
         pub fn remove_bridge_validator(
             origin: OriginFor<T>,
@@ -315,6 +317,7 @@ pub mod pallet {
             Self::remove_validator_account(target)
         }
 
+        #[pallet::call_index(2)]
         #[pallet::weight(10_000)]
         pub fn set_fee_account(
             origin: OriginFor<T>,
@@ -325,6 +328,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[pallet::call_index(3)]
         #[pallet::weight(10_000)]
         pub fn set_withdraw_fee(origin: OriginFor<T>, amount: u64) -> DispatchResultWithPostInfo {
             T::RestrictedOrigin::ensure_origin(origin)?;
@@ -332,6 +336,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[pallet::call_index(4)]
         #[pallet::weight(10_000)]
         pub fn set_deposit_fee(origin: OriginFor<T>, amount: u64) -> DispatchResultWithPostInfo {
             T::RestrictedOrigin::ensure_origin(origin)?;
@@ -339,6 +344,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        #[pallet::call_index(5)]
         #[pallet::weight(10_000)]
         pub fn swap_to_stellar(
             origin: OriginFor<T>,
@@ -349,6 +355,7 @@ pub mod pallet {
             Self::burn_tft(source, target_stellar_address, amount)
         }
 
+        #[pallet::call_index(6)]
         #[pallet::weight(10_000)]
         pub fn propose_or_vote_mint_transaction(
             origin: OriginFor<T>,
@@ -360,6 +367,7 @@ pub mod pallet {
             Self::propose_or_vote_stellar_mint_transaction(validator, transaction, target, amount)
         }
 
+        #[pallet::call_index(7)]
         #[pallet::weight(10_000)]
         pub fn propose_burn_transaction_or_add_sig(
             origin: OriginFor<T>,
@@ -382,6 +390,7 @@ pub mod pallet {
             )
         }
 
+        #[pallet::call_index(8)]
         #[pallet::weight(10_000)]
         pub fn set_burn_transaction_executed(
             origin: OriginFor<T>,
@@ -391,6 +400,7 @@ pub mod pallet {
             Self::set_stellar_burn_transaction_executed(validator, transaction_id)
         }
 
+        #[pallet::call_index(9)]
         #[pallet::weight(10_000)]
         pub fn create_refund_transaction_or_add_sig(
             origin: OriginFor<T>,
@@ -413,6 +423,7 @@ pub mod pallet {
             )
         }
 
+        #[pallet::call_index(10)]
         #[pallet::weight(10_000)]
         pub fn set_refund_transaction_executed(
             origin: OriginFor<T>,
