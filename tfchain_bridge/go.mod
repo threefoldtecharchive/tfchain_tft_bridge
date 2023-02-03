@@ -21,7 +21,7 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v4 v4.1.3
-	github.com/threefoldtech/substrate-client v0.0.0-20230203090304-851876cde024
+	github.com/threefoldtech/substrate-client v0.0.0-20230203145052-45be626d311b
 )
 
 require (
