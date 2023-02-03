@@ -330,7 +330,7 @@ fn withdraw_more_than_balance_plus_fee_fails() {
 }
 
 #[test]
-fn burn_locked_tokens_fails() {
+fn withdraw_locked_tokens_fails() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
