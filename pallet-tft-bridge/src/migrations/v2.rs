@@ -1,12 +1,9 @@
 use crate::Config;
 use crate::*;
 use frame_support::{
-    migration::move_prefix,
+    migration::{clear_storage_prefix, move_prefix},
     pallet_prelude::ValueQuery,
-    storage::{
-        storage_prefix,
-        unhashed::{exists, kill_prefix},
-    },
+    storage::{storage_prefix, unhashed::exists},
     storage_alias,
     traits::Get,
     traits::OnRuntimeUpgrade,
@@ -184,20 +181,20 @@ pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
     // At this stage reads = writes
     let reads = writes;
 
-    // Kill old storage prefixes
-    kill_prefix(
-        &storage_prefix(b"TFTBridgeModule", b"BurnTransactions"),
+    // Remove all items under BurnTransactions
+    let _ = clear_storage_prefix(b"TFTBridgeModule", b"BurnTransactions", b"", None, None);
+    // Remove all items under ExecutedBurnTransactions
+    let _ = clear_storage_prefix(
+        b"TFTBridgeModule",
+        b"ExecutedBurnTransactions",
+        b"",
+        None,
         None,
     );
-    kill_prefix(
-        &storage_prefix(b"TFTBridgeModule", b"ExecutedBurnTransactions"),
-        None,
-    );
-    kill_prefix(
-        &storage_prefix(b"TFTBridgeModule", b"BurnTransactionID"),
-        None,
-    );
-    kill_prefix(&storage_prefix(b"TFTBridgeModule", b"BurnFee"), None);
+    // Remove all items under BurnTransactionID
+    let _ = clear_storage_prefix(b"TFTBridgeModule", b"BurnTransactionID", b"", None, None);
+    // Remove all items under BurnFee
+    let _ = clear_storage_prefix(b"TFTBridgeModule", b"BurnFee", b"", None, None);
 
     // Ensure old storage prefixes does not exist anymore
     assert_eq!(
@@ -226,5 +223,5 @@ pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
     info!(" <<< Storage version upgraded");
 
     // Return the weight consumed by the migration.
-    T::DbWeight::get().reads_writes(reads as Weight, writes as Weight)
+    T::DbWeight::get().reads_writes(reads as u64, writes as u64)
 }

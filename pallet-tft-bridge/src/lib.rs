@@ -132,7 +132,7 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_balances::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Currency type for this pallet.
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
@@ -142,7 +142,7 @@ pub mod pallet {
 
         /// Origin for restricted extrinsics
         /// Can be the root or another origin configured in the runtime
-        type RestrictedOrigin: EnsureOrigin<Self::Origin>;
+        type RestrictedOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         // Retry interval for expired transactions
         type RetryInterval: Get<u32>;
@@ -283,7 +283,8 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(0)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn add_bridge_validator(
             origin: OriginFor<T>,
             target: T::AccountId,
@@ -292,7 +293,8 @@ pub mod pallet {
             Self::add_validator_account(target)
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(1)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn remove_bridge_validator(
             origin: OriginFor<T>,
             target: T::AccountId,
@@ -301,7 +303,8 @@ pub mod pallet {
             Self::remove_validator_account(target)
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(2)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn set_fee_account(
             origin: OriginFor<T>,
             target: T::AccountId,
@@ -311,21 +314,24 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(3)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn set_withdraw_fee(origin: OriginFor<T>, amount: u64) -> DispatchResultWithPostInfo {
             T::RestrictedOrigin::ensure_origin(origin)?;
             WithdrawFee::<T>::set(amount);
             Ok(().into())
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(4)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn set_deposit_fee(origin: OriginFor<T>, amount: u64) -> DispatchResultWithPostInfo {
             T::RestrictedOrigin::ensure_origin(origin)?;
             DepositFee::<T>::set(amount);
             Ok(().into())
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(5)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn swap_to_stellar(
             origin: OriginFor<T>,
             target_stellar_address: Vec<u8>,
@@ -335,7 +341,8 @@ pub mod pallet {
             Self::withdraw_tft(source, target_stellar_address, amount)
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(6)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn propose_or_vote_mint_transaction(
             origin: OriginFor<T>,
             transaction: Vec<u8>,
@@ -346,7 +353,8 @@ pub mod pallet {
             Self::propose_or_vote_stellar_mint_transaction(validator, transaction, target, amount)
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(7)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn propose_withdraw_transaction_or_add_sig(
             origin: OriginFor<T>,
             transaction_id: u64,
@@ -368,7 +376,8 @@ pub mod pallet {
             )
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(8)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn set_withdraw_transaction_executed(
             origin: OriginFor<T>,
             transaction_id: u64,
@@ -377,7 +386,8 @@ pub mod pallet {
             Self::set_stellar_withdraw_transaction_executed(validator, transaction_id)
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(9)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn create_refund_transaction_or_add_sig(
             origin: OriginFor<T>,
             tx_hash: Vec<u8>,
@@ -399,7 +409,8 @@ pub mod pallet {
             )
         }
 
-        #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+        #[pallet::call_index(10)]
+        #[pallet::weight(10_000 + T::DbWeight::get().writes(1).ref_time())]
         pub fn set_refund_transaction_executed(
             origin: OriginFor<T>,
             tx_hash: Vec<u8>,
