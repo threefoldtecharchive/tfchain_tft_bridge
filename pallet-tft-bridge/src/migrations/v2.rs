@@ -13,11 +13,6 @@ use frame_support::{
 use log::info;
 use sp_std::marker::PhantomData;
 
-#[cfg(feature = "try-runtime")]
-use frame_support::traits::OnRuntimeUpgradeHelpersExt;
-#[cfg(feature = "try-runtime")]
-use sp_runtime::SaturatedConversion;
-
 #[storage_alias]
 pub type BurnTransactions<T: Config> = StorageMap<
     Pallet<T>,
@@ -46,7 +41,7 @@ pub struct RenameBurnToWithdraw<T: Config>(PhantomData<T>);
 
 impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
     #[cfg(feature = "try-runtime")]
-    fn pre_upgrade() -> Result<(), &'static str> {
+    fn pre_upgrade() -> Result<Vec<u8>, &'static str> {
         // Store number of transactions in temp storage
         let tx_count: u64 = BurnTransactions::<T>::iter_keys().count().saturated_into();
         let executed_tx_count: u64 = ExecutedBurnTransactions::<T>::iter_keys()
@@ -55,10 +50,13 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
         let tx_id = BurnTransactionID::<T>::get();
         let tx_fee = BurnFee::<T>::get();
 
-        Self::set_temp_storage(tx_count, "pre_tx_count");
-        Self::set_temp_storage(executed_tx_count, "pre_executed_tx_count");
-        Self::set_temp_storage(tx_id, "pre_tx_id");
-        Self::set_temp_storage(tx_fee, "pre_tx_fee");
+        let pre_data = [
+            u64::to_le_bytes(tx_count).to_vec(),
+            u64::to_le_bytes(executed_tx_count).to_vec(),
+            u64::to_le_bytes(tx_id).to_vec(),
+            u64::to_le_bytes(tx_fee).to_vec(),
+        ]
+        .concat();
 
         // Display pre migration state
         log::info!("🔎 RenameBurnToWithdraw pre migration:");
@@ -81,7 +79,7 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
         log::info!(" --> withdraw fee: {:?}", Pallet::<T>::withdraw_fee());
         log::info!("👥  TFChain TFT Bridge pallet to V2 passes PRE migrate checks ✅",);
 
-        Ok(())
+        Ok(pre_data)
     }
 
     fn on_runtime_upgrade() -> Weight {
@@ -89,13 +87,14 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
     }
 
     #[cfg(feature = "try-runtime")]
-    fn post_upgrade() -> Result<(), &'static str> {
+    fn post_upgrade(pre_data: Vec<u8>) -> Result<(), &'static str> {
         assert!(PalletVersion::<T>::get() >= types::StorageVersion::V2);
 
-        let pre_tx_count = Self::get_temp_storage("pre_tx_count").unwrap_or(0u64);
-        let pre_executed_tx_count = Self::get_temp_storage("pre_executed_tx_count").unwrap_or(0u64);
-        let pre_tx_id = Self::get_temp_storage("pre_tx_id").unwrap_or(0u64);
-        let pre_tx_fee = Self::get_temp_storage("pre_tx_fee").unwrap_or(0u64);
+        let pre_tx_count = u64::from_le_bytes(pre_data[0..8].try_into().unwrap_or([0_u8; 8]));
+        let pre_executed_tx_count =
+            u64::from_le_bytes(pre_data[8..16].try_into().unwrap_or([0_u8; 8]));
+        let pre_tx_id = u64::from_le_bytes(pre_data[16..24].try_into().unwrap_or([0_u8; 8]));
+        let pre_tx_fee = u64::from_le_bytes(pre_data[24..].try_into().unwrap_or([0_u8; 8]));
 
         let post_tx_count: u64 = WithdrawTransactions::<T>::iter_keys()
             .count()
@@ -155,7 +154,7 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
 
 pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
     info!(" >>> Migrating transactions storage...");
-    let mut writes = 0;
+    let mut reads_writes = 0;
 
     // Move burn tx storage to withdraw tx storage
     move_prefix(
@@ -163,7 +162,7 @@ pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
         &storage_prefix(b"TFTBridgeModule", b"WithdrawTransactions"),
     );
     assert_eq!(BurnTransactions::<T>::iter_keys().count(), 0);
-    writes += WithdrawTransactions::<T>::iter_keys().count();
+    reads_writes += WithdrawTransactions::<T>::iter_keys().count();
 
     // Move executed burn tx storage to executed withdraw tx storage
     move_prefix(
@@ -171,15 +170,12 @@ pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
         &storage_prefix(b"TFTBridgeModule", b"ExecutedWithdrawTransactions"),
     );
     assert_eq!(ExecutedBurnTransactions::<T>::iter_keys().count(), 0);
-    writes += ExecutedWithdrawTransactions::<T>::iter_keys().count();
+    reads_writes += ExecutedWithdrawTransactions::<T>::iter_keys().count();
 
     // Copy withdraw values from burn values
     WithdrawTransactionID::<T>::set(BurnTransactionID::<T>::get());
     WithdrawFee::<T>::set(BurnFee::<T>::get());
-    writes += 2;
-
-    // At this stage reads = writes
-    let reads = writes;
+    reads_writes += 2;
 
     // Remove all items under BurnTransactions
     let _ = clear_storage_prefix(b"TFTBridgeModule", b"BurnTransactions", b"", None, None);
@@ -217,11 +213,12 @@ pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
         false
     );
 
+    info!(" <<< Transactions storage updated! Renaming \"Burn\" => \"Withdraw\" ✅",);
+
     // Update pallet storage version
     PalletVersion::<T>::set(types::StorageVersion::V2);
-    writes += 1;
-    info!(" <<< Storage version upgraded");
+    info!(" <<< Transactions migration success, storage version upgraded");
 
     // Return the weight consumed by the migration.
-    T::DbWeight::get().reads_writes(reads as u64, writes as u64)
+    T::DbWeight::get().reads_writes(reads_writes as u64, reads_writes as u64 + 1)
 }
