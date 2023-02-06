@@ -86,7 +86,7 @@ func (bridge *Bridge) handleBadWithdraw(ctx context.Context, withdraw subpkg.Wit
 	log.Info().Uint64("ID", uint64(withdraw.ID)).Msg("tx is an invalid withdraw transaction, minting on chain again...")
 	mintID := fmt.Sprintf("refund-%d", withdraw.ID)
 
-	minted, err := bridge.subClient.IsMintedAlready(mintID)
+	minted, err := bridge.subClient.IsAlreadyMinted(mintID)
 	if err != nil {
 		if !errors.Is(err, substrate.ErrMintTransactionNotFound) {
 			return err

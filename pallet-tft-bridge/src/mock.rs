@@ -86,16 +86,11 @@ impl pallet_balances::Config for TestRuntime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<TestRuntime>;
 }
 
-parameter_types! {
-    pub const RetryInterval: u32 = 20;
-}
-
 impl Config for TestRuntime {
     type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type Withdraw = ();
     type RestrictedOrigin = EnsureRoot<Self::AccountId>;
-    type RetryInterval = RetryInterval;
 }
 
 type AccountPublic = <MultiSignature as Verify>::Signer;

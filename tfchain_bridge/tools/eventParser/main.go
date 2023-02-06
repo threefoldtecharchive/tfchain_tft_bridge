@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
 )
@@ -14,6 +16,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	withdraws, err := subClient.GetPendingWithdraws()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(withdraws)
 
 	for i := startHeight; i < endHeight; i++ {
 		err := processEventsForHeight(subClient, uint32(i))

@@ -161,7 +161,7 @@ fn withdraw_approval_retries_works() {
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1).unwrap();
         assert_eq!(withdraw_tx.signatures.len(), 2);
 
         assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
@@ -175,7 +175,7 @@ fn withdraw_approval_retries_works() {
             "eve_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let executed_withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        let executed_withdraw_tx = TFTBridgeModule::withdraw_transactions(1).unwrap();
         assert_eq!(executed_withdraw_tx.signatures.len(), 3);
 
         // // Test that the expected events were emitted
@@ -405,7 +405,7 @@ fn withdraw_flow() {
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1).unwrap();
         assert_eq!(withdraw_tx.signatures.len(), 2);
 
         assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
@@ -419,7 +419,7 @@ fn withdraw_flow() {
             "eve_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let executed_withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        let executed_withdraw_tx = TFTBridgeModule::withdraw_transactions(1).unwrap();
         assert_eq!(executed_withdraw_tx.signatures.len(), 3);
 
         let b = TFTBridgeModule::get_usable_balance(&bob());
@@ -431,88 +431,6 @@ fn withdraw_flow() {
             let balances_as_u128: u128 = b.saturated_into::<u128>();
             assert_eq!(balances_as_u128, 500000000);
         }
-    });
-}
-
-#[test]
-fn withdraw_flow_expired() {
-    new_test_ext().execute_with(|| {
-        prepare_validators();
-
-        run_to_block(1);
-
-        let b = TFTBridgeModule::get_usable_balance(&bob());
-        let balances_as_u128: u128 = b.saturated_into::<u128>();
-        assert_eq!(balances_as_u128, 2500000000);
-
-        assert_ok!(TFTBridgeModule::swap_to_stellar(
-            RuntimeOrigin::signed(alice()),
-            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
-                .as_bytes()
-                .to_vec(),
-            750000000
-        ));
-
-        // amount that needs to be withdrawn is:
-        // 750000000 - fee (500000000)
-
-        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
-            RuntimeOrigin::signed(alice()),
-            1,
-            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
-                .as_bytes()
-                .to_vec(),
-            250000000,
-            "alice_sig".as_bytes().to_vec(),
-            "alice_stellar_pubkey".as_bytes().to_vec(),
-            1
-        ));
-
-        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
-            RuntimeOrigin::signed(bob()),
-            1,
-            "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
-                .as_bytes()
-                .to_vec(),
-            250000000,
-            "bob_sig".as_bytes().to_vec(),
-            "bob_stellar_pubkey".as_bytes().to_vec(),
-            1
-        ));
-        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
-        assert_eq!(withdraw_tx.signatures.len(), 2);
-
-        run_to_block(102);
-        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
-        assert_eq!(withdraw_tx.signatures.len(), 0);
-
-        // let expired_withdraw_tx = TFTBridgeModule::expired_withdraw_transactions(1);
-        // assert_eq!(expired_withdraw_tx.signatures.len(), 2);
-
-        // // Test that the expected events were emitted
-        // let our_events = System::events()
-        //     .into_iter()
-        //     .map(|r| r.event)
-        //     .filter_map(|e| {
-        //         if let Event::pallet_tft_bridge(inner) = e {
-        //             Some(inner)
-        //         } else {
-        //             None
-        //         }
-        //     })
-        //     .collect::<Vec<_>>();
-
-        // let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> =
-        //     vec![RawEvent::WithdrawTransactionExpired(
-        //         1,
-        //         "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z".as_bytes().to_vec(),
-        //         250000000,
-        //     )];
-        // assert_eq!(our_events[4], expected_events[0]);
-
-        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
-        assert_eq!(withdraw_tx.signatures.len(), 0);
-        assert_eq!(withdraw_tx.sequence_number, 0);
     });
 }
 

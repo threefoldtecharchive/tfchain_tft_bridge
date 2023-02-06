@@ -8,6 +8,7 @@ import (
 )
 
 type EventSubscription struct {
+	Head   uint64
 	Events Events
 	Err    error
 }
@@ -15,10 +16,8 @@ type EventSubscription struct {
 type Events struct {
 	WithdrawCreatedEvents []WithdrawCreatedEvent
 	WithdrawReadyEvents   []WithdrawReadyEvent
-	WithdrawExpiredEvents []WithdrawExpiredEvent
 	RefundCreatedEvents   []RefundTransactionCreatedEvent
 	RefundReadyEvents     []RefundTransactionReadyEvent
-	RefundExpiredEvents   []RefundTransactionExpiredEvent
 }
 
 type WithdrawCreatedEvent struct {
@@ -88,24 +87,13 @@ func (client *SubstrateClient) processEventsForHeight(height uint32) (Events, er
 
 func (client *SubstrateClient) processEventRecords(events *substrate.EventRecords) Events {
 	var refundTransactionReadyEvents []RefundTransactionReadyEvent
-	var refundTransactionExpiredEvents []RefundTransactionExpiredEvent
 	var withdrawCreatedEvents []WithdrawCreatedEvent
 	var withdrawReadyEvents []WithdrawReadyEvent
-	var withdrawExpiredEvents []WithdrawExpiredEvent
 
 	for _, e := range events.TFTBridgeModule_RefundTransactionReady {
 		log.Info().Str("hash", string(e.RefundTransactionHash)).Msg("found refund transaction ready event")
 		refundTransactionReadyEvents = append(refundTransactionReadyEvents, RefundTransactionReadyEvent{
 			Hash: string(e.RefundTransactionHash),
-		})
-	}
-
-	for _, e := range events.TFTBridgeModule_RefundTransactionExpired {
-		log.Info().Str("hash", string(e.RefundTransactionHash)).Msgf("found expired refund transaction")
-		refundTransactionExpiredEvents = append(refundTransactionExpiredEvents, RefundTransactionExpiredEvent{
-			Hash:   string(e.RefundTransactionHash),
-			Target: string(e.Target),
-			Amount: uint64(e.Amount),
 		})
 	}
 
@@ -126,20 +114,9 @@ func (client *SubstrateClient) processEventRecords(events *substrate.EventRecord
 		})
 	}
 
-	for _, e := range events.TFTBridgeModule_WithdrawTransactionExpired {
-		log.Info().Uint64("ID", uint64(e.WithdrawTransactionID)).Msg("found withdraw transaction expired event")
-		withdrawExpiredEvents = append(withdrawExpiredEvents, WithdrawExpiredEvent{
-			ID:     uint64(e.WithdrawTransactionID),
-			Target: string(e.Target),
-			Amount: uint64(e.Amount),
-		})
-	}
-
 	return Events{
 		WithdrawCreatedEvents: withdrawCreatedEvents,
 		WithdrawReadyEvents:   withdrawReadyEvents,
-		WithdrawExpiredEvents: withdrawExpiredEvents,
 		RefundReadyEvents:     refundTransactionReadyEvents,
-		RefundExpiredEvents:   refundTransactionExpiredEvents,
 	}
 }

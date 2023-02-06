@@ -7,6 +7,8 @@ type BridgeConfig struct {
 	TfchainSeed         string
 	RescanBridgeAccount bool
 	PersistencyFile     string
+	// Interval in number of blocks where withdraws / refunds are retried
+	RetryInterval uint64
 	StellarConfig
 }
 

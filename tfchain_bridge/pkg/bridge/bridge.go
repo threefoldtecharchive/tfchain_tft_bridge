@@ -102,6 +102,12 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			if data.Err != nil {
 				return errors.Wrap(err, "failed to process events")
 			}
+
+			// Handle pending withdraws / refunds that were not yet executed
+			if data.Head-uint64(height.LastHeight) >= bridge.config.RetryInterval {
+
+			}
+
 			for _, withdrawCreatedEvent := range data.Events.WithdrawCreatedEvents {
 				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
 				if err != nil {
@@ -110,12 +116,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 						continue
 					}
 					return errors.Wrap(err, "failed to handle withdraw created")
-				}
-			}
-			for _, withdrawExpiredEvent := range data.Events.WithdrawExpiredEvents {
-				err := bridge.handleWithdrawExpired(ctx, withdrawExpiredEvent)
-				if err != nil {
-					return errors.Wrap(err, "failed to handle withdraw expired")
 				}
 			}
 			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
@@ -127,12 +127,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 					return errors.Wrap(err, "failed to handle withdraw ready")
 				}
 				log.Info().Uint64("ID", withdawReadyEvent.ID).Msg("withdraw processed")
-			}
-			for _, refundExpiredEvent := range data.Events.RefundExpiredEvents {
-				err := bridge.handleRefundExpired(ctx, refundExpiredEvent)
-				if err != nil {
-					return errors.Wrap(err, "failed to handle refund expired")
-				}
 			}
 			for _, refundReadyEvent := range data.Events.RefundReadyEvents {
 				err := bridge.handleRefundReady(ctx, refundReadyEvent)

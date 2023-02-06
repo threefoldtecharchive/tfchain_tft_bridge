@@ -73,6 +73,7 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context,
 		case head := <-chainHeadsSub.Chan():
 			events, err := client.processEventsForHeight(uint32(head.Number))
 			data := EventSubscription{
+				Head:   uint64(head.Number),
 				Events: events,
 				Err:    err,
 			}

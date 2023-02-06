@@ -81,7 +81,7 @@ pub mod pallet {
         Blake2_128Concat,
         u64,
         types::WithdrawTransaction<T::BlockNumber>,
-        ValueQuery,
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -91,7 +91,7 @@ pub mod pallet {
         Blake2_128Concat,
         u64,
         types::WithdrawTransaction<T::BlockNumber>,
-        ValueQuery,
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -101,7 +101,7 @@ pub mod pallet {
         Blake2_128Concat,
         Vec<u8>,
         types::RefundTransaction<T::BlockNumber>,
-        ValueQuery,
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -111,7 +111,7 @@ pub mod pallet {
         Blake2_128Concat,
         Vec<u8>,
         types::RefundTransaction<T::BlockNumber>,
-        ValueQuery,
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -143,9 +143,6 @@ pub mod pallet {
         /// Origin for restricted extrinsics
         /// Can be the root or another origin configured in the runtime
         type RestrictedOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-
-        // Retry interval for expired transactions
-        type RetryInterval: Get<u32>;
     }
 
     #[pallet::event]
@@ -155,20 +152,17 @@ pub mod pallet {
         MintTransactionProposed(Vec<u8>, T::AccountId, u64),
         MintTransactionVoted(Vec<u8>),
         MintCompleted(types::MintTransaction<T::AccountId, T::BlockNumber>),
-        MintTransactionExpired(Vec<u8>, u64, T::AccountId),
         // Withdraw events
         WithdrawTransactionCreated(u64, T::AccountId, Vec<u8>, u64),
         WithdrawTransactionProposed(u64, Vec<u8>, u64),
         WithdrawTransactionSignatureAdded(u64, types::StellarSignature),
         WithdrawTransactionReady(u64),
         WithdrawTransactionProcessed(types::WithdrawTransaction<T::BlockNumber>),
-        WithdrawTransactionExpired(u64, Vec<u8>, u64),
         // Refund events
         RefundTransactionCreated(Vec<u8>, Vec<u8>, u64),
         RefundTransactionsignatureAdded(Vec<u8>, types::StellarSignature),
         RefundTransactionReady(Vec<u8>),
         RefundTransactionProcessed(types::RefundTransaction<T::BlockNumber>),
-        RefundTransactionExpired(Vec<u8>, Vec<u8>, u64),
     }
 
     #[pallet::error]
@@ -229,55 +223,6 @@ pub mod pallet {
             }
             WithdrawFee::<T>::put(self.withdraw_fee);
             DepositFee::<T>::put(self.deposit_fee)
-        }
-    }
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_finalize(block: T::BlockNumber) {
-            let current_block_u64: u64 = block.saturated_into::<u64>();
-
-            for (tx_id, mut tx) in WithdrawTransactions::<T>::iter() {
-                let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
-                // if x blocks have passed since the tx got submitted
-                // we can safely assume this tx is fault
-                // add the faulty tx to the expired tx list
-                if current_block_u64 - tx_block_u64 >= T::RetryInterval::get().into() {
-                    // reset signatures and sequence number
-                    tx.signatures = Vec::new();
-                    tx.sequence_number = 0;
-                    tx.block = block;
-
-                    // update tx in storage
-                    WithdrawTransactions::<T>::insert(&tx_id, &tx);
-
-                    // Emit event
-                    Self::deposit_event(Event::WithdrawTransactionExpired(
-                        tx_id, tx.target, tx.amount,
-                    ));
-                }
-            }
-
-            for (tx_id, mut tx) in RefundTransactions::<T>::iter() {
-                let tx_block_u64: u64 = tx.block.saturated_into::<u64>();
-                // if x blocks have passed since the tx got submitted
-                // we can safely assume this tx is fault
-                // add the faulty tx to the expired tx list
-                if current_block_u64 - tx_block_u64 >= T::RetryInterval::get().into() {
-                    // reset signatures and sequence number
-                    tx.signatures = Vec::new();
-                    tx.sequence_number = 0;
-                    tx.block = block;
-
-                    // update tx in storage
-                    RefundTransactions::<T>::insert(&tx_id, &tx);
-
-                    // Emit event
-                    Self::deposit_event(Event::RefundTransactionExpired(
-                        tx_id, tx.target, tx.amount,
-                    ));
-                }
-            }
         }
     }
 
@@ -651,11 +596,8 @@ impl<T: Config> Pallet<T> {
             Error::<T>::WithdrawTransactionAlreadyExecuted
         );
 
-        let mut withdraw_tx = WithdrawTransactions::<T>::get(tx_id);
-        ensure!(
-            WithdrawTransactions::<T>::contains_key(tx_id),
-            Error::<T>::WithdrawTransactionNotExists
-        );
+        let mut withdraw_tx = WithdrawTransactions::<T>::get(tx_id)
+            .ok_or(Error::<T>::WithdrawTransactionNotExists)?;
 
         ensure!(
             withdraw_tx.amount == amount,
@@ -699,7 +641,8 @@ impl<T: Config> Pallet<T> {
         stellar_pub_key: Vec<u8>,
         sequence_number: u64,
     ) -> DispatchResultWithPostInfo {
-        let mut tx = WithdrawTransactions::<T>::get(&tx_id);
+        let mut tx =
+            WithdrawTransactions::<T>::get(&tx_id).ok_or(Error::<T>::WithdrawTransactionExists)?;
 
         let validators = Validators::<T>::get();
         if tx.signatures.len() == (validators.len() / 2) + 1 {
@@ -757,7 +700,8 @@ impl<T: Config> Pallet<T> {
             Error::<T>::WithdrawTransactionNotExists
         );
 
-        let tx = WithdrawTransactions::<T>::get(tx_id);
+        let tx =
+            WithdrawTransactions::<T>::get(tx_id).ok_or(Error::<T>::WithdrawTransactionExists)?;
 
         WithdrawTransactions::<T>::remove(tx_id);
         ExecutedWithdrawTransactions::<T>::insert(tx_id, &tx);
@@ -773,7 +717,8 @@ impl<T: Config> Pallet<T> {
         stellar_pub_key: Vec<u8>,
         sequence_number: u64,
     ) -> DispatchResultWithPostInfo {
-        let mut tx = RefundTransactions::<T>::get(&tx_hash);
+        let mut tx =
+            RefundTransactions::<T>::get(&tx_hash).ok_or(Error::<T>::RefundTransactionNotExists)?;
 
         let validators = Validators::<T>::get();
         if tx.signatures.len() == (validators.len() / 2) + 1 {
@@ -833,7 +778,8 @@ impl<T: Config> Pallet<T> {
             Error::<T>::RefundTransactionNotExists
         );
 
-        let tx = RefundTransactions::<T>::get(&tx_id);
+        let tx =
+            RefundTransactions::<T>::get(&tx_id).ok_or(Error::<T>::RefundTransactionNotExists)?;
 
         RefundTransactions::<T>::remove(&tx_id);
         ExecutedRefundTransactions::<T>::insert(tx_id.clone(), &tx);

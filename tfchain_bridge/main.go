@@ -26,6 +26,7 @@ func main() {
 	flag.StringVar(&bridgeCfg.PersistencyFile, "persistency", "./node.json", "file where last seen blockheight and stellar account cursor is stored")
 	flag.BoolVar(&bridgeCfg.RescanBridgeAccount, "rescan", false, "if true is provided, we rescan the bridge stellar account and mint all transactions again")
 	flag.StringVar(&bridgeCfg.StellarHorizonUrl, "horizon", "", "stellar horizon url endpoint")
+	flag.Uint64Var(&bridgeCfg.RetryInterval, "retry-interval", 300, "retry interval for withdraws / refunds in number of blocks")
 	flag.BoolVar(&debug, "debug", false, "sets debug level log output")
 
 	flag.Parse()
