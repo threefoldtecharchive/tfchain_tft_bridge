@@ -105,7 +105,27 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 
 			// Handle pending withdraws / refunds that were not yet executed
 			if data.Head-uint64(height.LastHeight) >= bridge.config.RetryInterval {
+				pendingWithdraws, err := bridge.subClient.GetPendingWithdraws()
+				if err != nil {
+					return errors.Wrap(err, "failed to get pending withdraws")
+				}
+				for _, withdraw := range *pendingWithdraws {
+					err := bridge.handlePendingWithdraw(ctx, withdraw)
+					if err != nil {
+						return errors.Wrap(err, "failed to handle pending withdraw")
+					}
+				}
 
+				pendingRefunds, err := bridge.subClient.GetPendingRefunds()
+				if err != nil {
+					return errors.Wrap(err, "failed to get pending refunds")
+				}
+				for _, refund := range *pendingRefunds {
+					err := bridge.handlePendingRefund(ctx, refund)
+					if err != nil {
+						return errors.Wrap(err, "failed to handle pending refund")
+					}
+				}
 			}
 
 			for _, withdrawCreatedEvent := range data.Events.WithdrawCreatedEvents {

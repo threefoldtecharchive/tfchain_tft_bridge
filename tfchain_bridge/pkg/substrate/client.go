@@ -97,8 +97,8 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context,
 	}
 }
 
-func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uint64) error {
-	err := s.SetWithdrawTransactionExecuted(s.identity, tixd)
+func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, txID uint64) error {
+	err := s.SetWithdrawTransactionExecuted(s.identity, txID)
 	for err != nil {
 		log.Err(err).Msg("error while setting refund transaction as executed")
 
@@ -106,7 +106,7 @@ func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uin
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.SetWithdrawTransactionExecuted(s.identity, tixd)
+			err = s.SetWithdrawTransactionExecuted(s.identity, txID)
 		}
 	}
 

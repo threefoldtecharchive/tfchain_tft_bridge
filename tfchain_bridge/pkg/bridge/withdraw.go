@@ -37,6 +37,21 @@ func (bridge *Bridge) handleWithdrawCreated(ctx context.Context, withdraw subpkg
 	return bridge.subClient.RetryProposeWithdrawOrAddSig(ctx, withdraw.ID, withdraw.Target, big.NewInt(int64(withdraw.Amount)), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
+func (bridge *Bridge) handlePendingWithdraw(ctx context.Context, pendingWithdraw substrate.WithdrawTransaction) error {
+	if err := bridge.wallet.CheckAccount(pendingWithdraw.Target); err != nil {
+		log.Info().Uint64("ID", uint64(pendingWithdraw.ID)).Msg("tx is an invalid withdraw transaction, setting withdraw as executed since we have no way to recover...")
+		return bridge.subClient.RetrySetWithdrawExecuted(ctx, pendingWithdraw.ID)
+	}
+
+	signature, sequenceNumber, err := bridge.wallet.CreatePaymentAndReturnSignature(ctx, pendingWithdraw.Target, uint64(pendingWithdraw.Amount), pendingWithdraw.ID)
+	if err != nil {
+		return err
+	}
+	log.Debug().Msgf("stellar account sequence number: %d", sequenceNumber)
+
+	return bridge.subClient.RetryProposeWithdrawOrAddSig(ctx, pendingWithdraw.ID, pendingWithdraw.Target, big.NewInt(int64(pendingWithdraw.Amount)), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
+}
+
 func (bridge *Bridge) handleWithdrawExpired(ctx context.Context, withdrawExpired subpkg.WithdrawExpiredEvent) error {
 	if err := bridge.wallet.CheckAccount(withdrawExpired.Target); err != nil {
 		log.Info().Uint64("ID", uint64(withdrawExpired.ID)).Msg("tx is an invalid withdraw transaction, setting withdraw as executed since we have no way to recover...")

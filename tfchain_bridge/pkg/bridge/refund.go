@@ -5,6 +5,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	hProtocol "github.com/stellar/go/protocols/horizon"
+	"github.com/threefoldtech/substrate-client"
 	"github.com/threefoldtech/tfchain_bridge/pkg"
 	subpkg "github.com/threefoldtech/tfchain_bridge/pkg/substrate"
 )
@@ -28,6 +29,25 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 		return err
 	}
 	return nil
+}
+
+func (bridge *Bridge) handlePendingRefund(ctx context.Context, pendingRefund substrate.RefundTransaction) error {
+	refunded, err := bridge.subClient.IsAlreadyRefunded(pendingRefund.TxHash)
+	if err != nil {
+		return err
+	}
+
+	if refunded {
+		log.Info().Str("tx_id", pendingRefund.TxHash).Msg("tx is already refunded, skipping...")
+		return pkg.ErrTransactionAlreadyRefunded
+	}
+
+	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, pendingRefund.Target, uint64(pendingRefund.Amount), pendingRefund.TxHash)
+	if err != nil {
+		return err
+	}
+
+	return bridge.subClient.RetryCreateRefundTransactionOrAddSig(ctx, pendingRefund.TxHash, pendingRefund.Target, int64(pendingRefund.Amount), signature, bridge.wallet.GetKeypair().Address(), sequenceNumber)
 }
 
 func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEvent subpkg.RefundTransactionExpiredEvent) error {

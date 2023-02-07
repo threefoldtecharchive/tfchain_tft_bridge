@@ -23,6 +23,12 @@ func main() {
 	}
 	fmt.Println(withdraws)
 
+	refunds, err := subClient.GetPendingRefunds()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(refunds)
+
 	for i := startHeight; i < endHeight; i++ {
 		err := processEventsForHeight(subClient, uint32(i))
 		if err != nil {
