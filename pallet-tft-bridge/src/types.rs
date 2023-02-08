@@ -31,6 +31,7 @@ pub struct MintTransaction<AccountId, BlockNumber> {
 // Transaction is ready when (number of validators / 2) + 1 signatures are present
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Default, Debug, TypeInfo)]
 pub struct WithdrawTransaction<BlockNumber> {
+    pub id: u64,
     pub block: BlockNumber,
     pub amount: u64,
     pub target: Vec<u8>,

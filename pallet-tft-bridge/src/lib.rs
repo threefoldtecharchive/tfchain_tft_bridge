@@ -509,6 +509,7 @@ impl<T: Config> Pallet<T> {
         // Create transaction with empty signatures
         let now = <frame_system::Pallet<T>>::block_number();
         let tx = types::WithdrawTransaction {
+            id: withdraw_id,
             block: now,
             amount: withdraw_amount_as_u64,
             target: target_stellar_address,
