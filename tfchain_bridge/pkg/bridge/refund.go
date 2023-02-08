@@ -31,13 +31,13 @@ func (bridge *Bridge) refund(ctx context.Context, destination string, amount int
 }
 
 func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEvent subpkg.RefundTransactionExpiredEvent) error {
-	refunded, err := bridge.subClient.IsRefundedAlready(refundExpiredEvent.Hash)
+	refunded, err := bridge.subClient.IsAlreadyRefunded(refundExpiredEvent.Hash)
 	if err != nil {
 		return err
 	}
 
 	if refunded {
-		log.Info().Str("tx_id", refundExpiredEvent.Hash).Msg("tx is refunded already, skipping...")
+		log.Info().Str("tx_id", refundExpiredEvent.Hash).Msg("tx is already refunded, skipping...")
 		return pkg.ErrTransactionAlreadyRefunded
 	}
 
@@ -50,13 +50,13 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 }
 
 func (bridge *Bridge) handleRefundReady(ctx context.Context, refundReadyEvent subpkg.RefundTransactionReadyEvent) error {
-	refunded, err := bridge.subClient.IsRefundedAlready(refundReadyEvent.Hash)
+	refunded, err := bridge.subClient.IsAlreadyRefunded(refundReadyEvent.Hash)
 	if err != nil {
 		return err
 	}
 
 	if refunded {
-		log.Info().Str("tx_id", refundReadyEvent.Hash).Msg("tx is refunded already, skipping...")
+		log.Info().Str("tx_id", refundReadyEvent.Hash).Msg("tx is already refunded, skipping...")
 		return pkg.ErrTransactionAlreadyRefunded
 	}
 

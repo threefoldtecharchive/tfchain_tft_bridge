@@ -97,7 +97,7 @@ func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context,
 }
 
 func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uint64) error {
-	err := s.SetBurnTransactionExecuted(s.identity, tixd)
+	err := s.SetWithdrawTransactionExecuted(s.identity, tixd)
 	for err != nil {
 		log.Err(err).Msg("error while setting refund transaction as executed")
 
@@ -105,7 +105,7 @@ func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uin
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.SetBurnTransactionExecuted(s.identity, tixd)
+			err = s.SetWithdrawTransactionExecuted(s.identity, tixd)
 		}
 	}
 
@@ -113,7 +113,7 @@ func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uin
 }
 
 func (s *SubstrateClient) RetryProposeWithdrawOrAddSig(ctx context.Context, txID uint64, target string, amount *big.Int, signature string, stellarAddress string, sequence_number uint64) error {
-	err := s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+	err := s.ProposeWithdrawTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
 	for err != nil {
 		log.Err(err).Msg("error while proposing withdraw or adding signature")
 
@@ -121,7 +121,7 @@ func (s *SubstrateClient) RetryProposeWithdrawOrAddSig(ctx context.Context, txID
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+			err = s.ProposeWithdrawTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
 		}
 	}
 

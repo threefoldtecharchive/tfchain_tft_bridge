@@ -106,7 +106,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 				err := bridge.handleWithdrawCreated(ctx, withdrawCreatedEvent)
 				if err != nil {
 					// If the TX is already withdrawn or refunded (minted on tfchain) skip
-					if errors.Is(err, pkg.ErrTransactionAlreadyBurned) || errors.Is(err, pkg.ErrTransactionAlreadyMinted) {
+					if errors.Is(err, pkg.ErrTransactionAlreadyWithdrawn) || errors.Is(err, pkg.ErrTransactionAlreadyMinted) {
 						continue
 					}
 					return errors.Wrap(err, "failed to handle withdraw created")
@@ -121,7 +121,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 			for _, withdawReadyEvent := range data.Events.WithdrawReadyEvents {
 				err := bridge.handleWithdrawReady(ctx, withdawReadyEvent)
 				if err != nil {
-					if errors.Is(err, pkg.ErrTransactionAlreadyBurned) {
+					if errors.Is(err, pkg.ErrTransactionAlreadyWithdrawn) {
 						continue
 					}
 					return errors.Wrap(err, "failed to handle withdraw ready")

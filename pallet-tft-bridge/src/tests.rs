@@ -25,7 +25,7 @@ fn add_validator_works() {
 fn add_validator_non_root_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            TFTBridgeModule::add_bridge_validator(Origin::signed(alice()), bob()),
+            TFTBridgeModule::add_bridge_validator(RuntimeOrigin::signed(alice()), bob()),
             DispatchError::BadOrigin
         );
     });
@@ -54,7 +54,7 @@ fn proposing_mint_transaction_works() {
         ));
 
         assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(
-            Origin::signed(alice()),
+            RuntimeOrigin::signed(alice()),
             "some_tx".as_bytes().to_vec(),
             bob(),
             2
@@ -67,7 +67,7 @@ fn proposing_mint_transaction_without_being_validator_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             TFTBridgeModule::propose_or_vote_mint_transaction(
-                Origin::signed(alice()),
+                RuntimeOrigin::signed(alice()),
                 "some_tx".as_bytes().to_vec(),
                 bob(),
                 2
@@ -83,14 +83,14 @@ fn mint_flow() {
         prepare_validators();
 
         assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(
-            Origin::signed(alice()),
+            RuntimeOrigin::signed(alice()),
             "some_tx".as_bytes().to_vec(),
             bob(),
             750000000
         ));
 
         assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(
-            Origin::signed(bob()),
+            RuntimeOrigin::signed(bob()),
             "some_tx".as_bytes().to_vec(),
             bob(),
             750000000
@@ -99,7 +99,7 @@ fn mint_flow() {
         assert_eq!(mint_tx.votes, 2);
 
         assert_ok!(TFTBridgeModule::propose_or_vote_mint_transaction(
-            Origin::signed(eve()),
+            RuntimeOrigin::signed(eve()),
             "some_tx".as_bytes().to_vec(),
             bob(),
             750000000
@@ -121,13 +121,13 @@ fn mint_flow() {
 }
 
 #[test]
-fn burn_approval_retries_works() {
+fn withdraw_approval_retries_works() {
     new_test_ext().execute_with(|| {
         prepare_validators();
         run_to_block(1);
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
-            Origin::signed(bob()),
+            RuntimeOrigin::signed(bob()),
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
                 .to_vec(),
@@ -138,9 +138,9 @@ fn burn_approval_retries_works() {
         // Should return 2 expire events
         run_to_block(42);
 
-        // We can still approve a burn transaction later on
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(alice()),
+        // We can still approve a withdraw transaction later on
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(alice()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -150,8 +150,8 @@ fn burn_approval_retries_works() {
             "some_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(bob()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(bob()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -161,11 +161,11 @@ fn burn_approval_retries_works() {
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(burn_tx.signatures.len(), 2);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(withdraw_tx.signatures.len(), 2);
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(eve()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(eve()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -175,8 +175,8 @@ fn burn_approval_retries_works() {
             "eve_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let executed_burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(executed_burn_tx.signatures.len(), 3);
+        let executed_withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(executed_withdraw_tx.signatures.len(), 3);
 
         // // Test that the expected events were emitted
         // let our_events = System::events()
@@ -195,27 +195,27 @@ fn burn_approval_retries_works() {
         //     println!("event: {:?}", e);
         // }
         // let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> = vec![
-        //     RawEvent::BurnTransactionExpired(
+        //     RawEvent::WithdrawTransactionExpired(
         //         1,
         //         "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z".as_bytes().to_vec(),
         //         1500000000,
         //     ),
-        //     RawEvent::BurnTransactionReady(1),
+        //     RawEvent::WithdrawTransactionReady(1),
         // ];
         // // 1st event should be an expire event
         // assert_eq!(our_events[1], expected_events[0]);
         // // 2nd event should be an expire event
         // assert_eq!(our_events[2], expected_events[0]);
-        // // 6th event should be burn tx ready event
+        // // 6th event should be withdraw tx ready event
         // assert_eq!(our_events[6], expected_events[1]);
     });
 }
 
 #[test]
-fn swap_to_stellar_valid_address_workds() {
+fn swap_to_stellar_valid_address_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(TFTBridgeModule::swap_to_stellar(
-            Origin::signed(bob()),
+            RuntimeOrigin::signed(bob()),
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
                 .to_vec(),
@@ -229,7 +229,7 @@ fn swap_to_stellar_non_valid_address_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             TFTBridgeModule::swap_to_stellar(
-                Origin::signed(bob()),
+                RuntimeOrigin::signed(bob()),
                 "some_invalid_text".as_bytes().to_vec(),
                 2000000000
             ),
@@ -239,20 +239,20 @@ fn swap_to_stellar_non_valid_address_fails() {
 }
 
 #[test]
-fn proposing_burn_transaction_works() {
+fn proposing_withdraw_transaction_works() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
-            Origin::signed(bob()),
+            RuntimeOrigin::signed(bob()),
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
                 .to_vec(),
             2000000000
         ));
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(alice()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(alice()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -266,13 +266,13 @@ fn proposing_burn_transaction_works() {
 }
 
 #[test]
-fn proposing_burn_transaction_if_no_burn_was_made_fails() {
+fn proposing_withdraw_transaction_if_no_withdraw_was_made_fails() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
         assert_noop!(
-            TFTBridgeModule::propose_burn_transaction_or_add_sig(
-                Origin::signed(alice()),
+            TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+                RuntimeOrigin::signed(alice()),
                 1,
                 "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                     .as_bytes()
@@ -282,17 +282,17 @@ fn proposing_burn_transaction_if_no_burn_was_made_fails() {
                 "some_stellar_pubkey".as_bytes().to_vec(),
                 1
             ),
-            Error::<TestRuntime>::BurnTransactionNotExists
+            Error::<TestRuntime>::WithdrawTransactionNotExists
         );
     });
 }
 
 #[test]
-fn proposing_burn_transaction_without_being_validator_fails() {
+fn proposing_withdraw_transaction_without_being_validator_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            TFTBridgeModule::propose_burn_transaction_or_add_sig(
-                Origin::signed(alice()),
+            TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+                RuntimeOrigin::signed(alice()),
                 1,
                 "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                     .as_bytes()
@@ -308,7 +308,7 @@ fn proposing_burn_transaction_without_being_validator_fails() {
 }
 
 #[test]
-fn burn_more_than_balance_plus_fee_fails() {
+fn withdraw_more_than_balance_plus_fee_fails() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
@@ -318,7 +318,7 @@ fn burn_more_than_balance_plus_fee_fails() {
 
         assert_noop!(
             TFTBridgeModule::swap_to_stellar(
-                Origin::signed(bob()),
+                RuntimeOrigin::signed(bob()),
                 "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                     .as_bytes()
                     .to_vec(),
@@ -330,7 +330,7 @@ fn burn_more_than_balance_plus_fee_fails() {
 }
 
 #[test]
-fn burn_locked_tokens_fails() {
+fn withdraw_locked_tokens_fails() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
@@ -351,7 +351,7 @@ fn burn_locked_tokens_fails() {
 
         assert_noop!(
             TFTBridgeModule::swap_to_stellar(
-                Origin::signed(bob()),
+                RuntimeOrigin::signed(bob()),
                 "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                     .as_bytes()
                     .to_vec(),
@@ -363,7 +363,7 @@ fn burn_locked_tokens_fails() {
 }
 
 #[test]
-fn burn_flow() {
+fn withdraw_flow() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
@@ -372,18 +372,18 @@ fn burn_flow() {
         assert_eq!(balances_as_u128, 2500000000);
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
-            Origin::signed(bob()),
+            RuntimeOrigin::signed(bob()),
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
                 .to_vec(),
             2000000000
         ));
 
-        // amount that needs to be burned is:
+        // amount that needs to be withdrawn is:
         // 2000000000 - fee (500000000)
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(alice()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(alice()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -394,8 +394,8 @@ fn burn_flow() {
             1
         ));
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(bob()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(bob()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -405,11 +405,11 @@ fn burn_flow() {
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(burn_tx.signatures.len(), 2);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(withdraw_tx.signatures.len(), 2);
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(eve()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(eve()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -419,8 +419,8 @@ fn burn_flow() {
             "eve_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let executed_burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(executed_burn_tx.signatures.len(), 3);
+        let executed_withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(executed_withdraw_tx.signatures.len(), 3);
 
         let b = TFTBridgeModule::get_usable_balance(&bob());
         let balances_as_u128: u128 = b.saturated_into::<u128>();
@@ -435,7 +435,7 @@ fn burn_flow() {
 }
 
 #[test]
-fn burn_flow_expired() {
+fn withdraw_flow_expired() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
@@ -446,18 +446,18 @@ fn burn_flow_expired() {
         assert_eq!(balances_as_u128, 2500000000);
 
         assert_ok!(TFTBridgeModule::swap_to_stellar(
-            Origin::signed(alice()),
+            RuntimeOrigin::signed(alice()),
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
                 .to_vec(),
             750000000
         ));
 
-        // amount that needs to be burned is:
+        // amount that needs to be withdrawn is:
         // 750000000 - fee (500000000)
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(alice()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(alice()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -468,8 +468,8 @@ fn burn_flow_expired() {
             1
         ));
 
-        assert_ok!(TFTBridgeModule::propose_burn_transaction_or_add_sig(
-            Origin::signed(bob()),
+        assert_ok!(TFTBridgeModule::propose_withdraw_transaction_or_add_sig(
+            RuntimeOrigin::signed(bob()),
             1,
             "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                 .as_bytes()
@@ -479,15 +479,15 @@ fn burn_flow_expired() {
             "bob_stellar_pubkey".as_bytes().to_vec(),
             1
         ));
-        let burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(burn_tx.signatures.len(), 2);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(withdraw_tx.signatures.len(), 2);
 
         run_to_block(102);
-        let burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(burn_tx.signatures.len(), 0);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(withdraw_tx.signatures.len(), 0);
 
-        // let expired_burn_tx = TFTBridgeModule::expired_burn_transactions(1);
-        // assert_eq!(expired_burn_tx.signatures.len(), 2);
+        // let expired_withdraw_tx = TFTBridgeModule::expired_withdraw_transactions(1);
+        // assert_eq!(expired_withdraw_tx.signatures.len(), 2);
 
         // // Test that the expected events were emitted
         // let our_events = System::events()
@@ -503,27 +503,27 @@ fn burn_flow_expired() {
         //     .collect::<Vec<_>>();
 
         // let expected_events: std::vec::Vec<RawEvent<AccountId, BlockNumber>> =
-        //     vec![RawEvent::BurnTransactionExpired(
+        //     vec![RawEvent::WithdrawTransactionExpired(
         //         1,
         //         "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z".as_bytes().to_vec(),
         //         250000000,
         //     )];
         // assert_eq!(our_events[4], expected_events[0]);
 
-        let burn_tx = TFTBridgeModule::burn_transactions(1);
-        assert_eq!(burn_tx.signatures.len(), 0);
-        assert_eq!(burn_tx.sequence_number, 0);
+        let withdraw_tx = TFTBridgeModule::withdraw_transactions(1);
+        assert_eq!(withdraw_tx.signatures.len(), 0);
+        assert_eq!(withdraw_tx.sequence_number, 0);
     });
 }
 
 #[test]
-fn burn_fails_if_less_than_withdraw_fee_amount() {
+fn withdraw_fails_if_less_than_withdraw_fee_amount() {
     new_test_ext().execute_with(|| {
         prepare_validators();
 
         assert_noop!(
             TFTBridgeModule::swap_to_stellar(
-                Origin::signed(alice()),
+                RuntimeOrigin::signed(alice()),
                 "GBIYYEQO73AYJEADTHMTF5M42WICTHU55IIT2CPEZBBLLDSJ322OGW7Z"
                     .as_bytes()
                     .to_vec(),
