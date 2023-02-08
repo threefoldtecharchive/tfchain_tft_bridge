@@ -18,7 +18,7 @@ pub type BurnTransactions<T: Config> = StorageMap<
     Pallet<T>,
     Blake2_128Concat,
     u64,
-    super::types::v1::BurnTransaction<<T as system::Config>::BlockNumber>,
+    super::types::v1a::BurnTransaction<<T as system::Config>::BlockNumber>,
     ValueQuery,
 >;
 
@@ -27,7 +27,7 @@ pub type ExecutedBurnTransactions<T: Config> = StorageMap<
     Pallet<T>,
     Blake2_128Concat,
     u64,
-    super::types::v1::BurnTransaction<<T as system::Config>::BlockNumber>,
+    super::types::v1a::BurnTransaction<<T as system::Config>::BlockNumber>,
     ValueQuery,
 >;
 
@@ -59,31 +59,33 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
         .concat();
 
         // Display pre migration state
-        log::info!("🔎 RenameBurnToWithdraw pre migration:");
-        log::info!(" <-- burn tx count: {:?}", tx_count);
-        log::info!(" <-- executed burn tx count: {:?}", executed_tx_count);
-        log::info!(" <-- burn tx id: {:?}", tx_id);
-        log::info!(" <-- burn fee: {:?}", tx_fee);
-        log::info!(
+        info!("🔎 RenameBurnToWithdraw pre migration:");
+        info!(" <-- burn tx count: {:?}", tx_count);
+        info!(" <-- executed burn tx count: {:?}", executed_tx_count);
+        info!(" <-- burn tx id: {:?}", tx_id);
+        info!(" <-- burn fee: {:?}", tx_fee);
+        info!(
             " --> withdraw tx count: {:?}",
             WithdrawTransactions::<T>::iter_keys().count()
         );
-        log::info!(
+        info!(
             " --> executed withdraw tx count: {:?}",
             ExecutedWithdrawTransactions::<T>::iter_keys().count()
         );
-        log::info!(
+        info!(
             " --> withdraw tx id: {:?}",
             Pallet::<T>::withdraw_transaction_id()
         );
-        log::info!(" --> withdraw fee: {:?}", Pallet::<T>::withdraw_fee());
-        log::info!("👥  TFChain TFT Bridge pallet to V2 passes PRE migrate checks ✅",);
+        info!(" --> withdraw fee: {:?}", Pallet::<T>::withdraw_fee());
+        info!("👥  TFChain TFT Bridge pallet to V2 passes PRE migrate checks ✅",);
 
         Ok(pre_data)
     }
 
     fn on_runtime_upgrade() -> Weight {
         rename_burn_to_withdraw::<T>()
+            + add_withdraw_tx_id::<T>()
+            + update_pallet_storage_version::<T>()
     }
 
     #[cfg(feature = "try-runtime")]
@@ -106,24 +108,24 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
         let post_tx_fee = Pallet::<T>::withdraw_fee();
 
         // Display post migration state
-        log::info!("🔎 RenameBurnToWithdraw post migration:");
-        log::info!(
+        info!("🔎 RenameBurnToWithdraw post migration:");
+        info!(
             " <-- burn tx count: {:?}",
             BurnTransactions::<T>::iter_keys().count()
         );
-        log::info!(
+        info!(
             " <-- executed burn tx count: {:?}",
             ExecutedBurnTransactions::<T>::iter_keys().count()
         );
-        log::info!(" <-- burn tx id: {:?}", BurnTransactionID::<T>::get());
-        log::info!(" <-- burn fee: {:?}", BurnFee::<T>::get());
-        log::info!(" --> withdraw tx count: {:?}", post_tx_count);
-        log::info!(
+        info!(" <-- burn tx id: {:?}", BurnTransactionID::<T>::get());
+        info!(" <-- burn fee: {:?}", BurnFee::<T>::get());
+        info!(" --> withdraw tx count: {:?}", post_tx_count);
+        info!(
             " --> executed withdraw tx count: {:?}",
             post_executed_tx_count
         );
-        log::info!(" --> withdraw tx id: {:?}", post_tx_id);
-        log::info!(" --> withdraw fee: {:?}", post_tx_fee);
+        info!(" --> withdraw tx id: {:?}", post_tx_id);
+        info!(" --> withdraw fee: {:?}", post_tx_fee);
 
         // Check transactions against pre-check result
         assert_eq!(
@@ -153,7 +155,7 @@ impl<T: Config> OnRuntimeUpgrade for RenameBurnToWithdraw<T> {
 }
 
 pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
-    info!(" >>> Migrating transactions storage...");
+    info!(" >>> Migrating withdraw tx storage...");
     let mut reads_writes = 0;
 
     // Move burn tx storage to withdraw tx storage
@@ -213,12 +215,75 @@ pub fn rename_burn_to_withdraw<T: Config>() -> frame_support::weights::Weight {
         false
     );
 
-    info!(" <<< Transactions storage updated! Renaming \"Burn\" => \"Withdraw\" ✅",);
-
-    // Update pallet storage version
-    PalletVersion::<T>::set(types::StorageVersion::V2);
-    info!(" <<< Transactions migration success, storage version upgraded");
+    info!(" <<< Withdraw tx storage updated! Renaming \"Burn\" => \"Withdraw\" ✅",);
 
     // Return the weight consumed by the migration.
-    T::DbWeight::get().reads_writes(reads_writes as u64, reads_writes as u64 + 1)
+    T::DbWeight::get().reads_writes(reads_writes as u64, reads_writes as u64)
+}
+
+pub fn add_withdraw_tx_id<T: Config>() -> frame_support::weights::Weight {
+    info!(" >>> Migrating withdraw tx storage...");
+    let mut reads_writes = 0;
+
+    // Set transaction id field for withdraw tx storage
+    WithdrawTransactions::<T>::translate::<super::types::v1b::WithdrawTransaction<T::BlockNumber>, _>(
+        |k, wt| {
+            let new_withdraw_tx = types::WithdrawTransaction::<T::BlockNumber> {
+                id: k,
+                block: wt.block,
+                amount: wt.amount,
+                target: wt.target,
+                signatures: wt.signatures,
+                sequence_number: wt.sequence_number,
+            };
+
+            // info!(" --------------------");
+            // info!(" tx id: {:?}", k);
+            // info!(" id: {:?}", new_withdraw_tx.id);
+            // info!(" block: {:?}", new_withdraw_tx.block);
+            // info!(" amount: {:?}", new_withdraw_tx.amount);
+
+            reads_writes += 1;
+            Some(new_withdraw_tx)
+        },
+    );
+
+    // Set transaction id field for executed withdraw tx storage
+    ExecutedWithdrawTransactions::<T>::translate::<
+        super::types::v1b::WithdrawTransaction<T::BlockNumber>,
+        _,
+    >(|k, ewt| {
+        let new_executed_withdraw_tx = types::WithdrawTransaction::<T::BlockNumber> {
+            id: k,
+            block: ewt.block,
+            amount: ewt.amount,
+            target: ewt.target,
+            signatures: ewt.signatures,
+            sequence_number: ewt.sequence_number,
+        };
+
+        // info!(" --------------------");
+        // info!(" tx id: {:?}", k);
+        // info!(" id: {:?}", new_executed_withdraw_tx.id);
+        // info!(" block: {:?}", new_executed_withdraw_tx.block);
+        // info!(" amount: {:?}", new_executed_withdraw_tx.amount);
+
+        reads_writes += 1;
+        Some(new_executed_withdraw_tx)
+    });
+
+    info!(" <<< Withdraw tx storage updated! Adding withdraw tx id ✅",);
+
+    // Return the weight consumed by the migration.
+    T::DbWeight::get().reads_writes(reads_writes as u64, reads_writes as u64)
+}
+
+pub fn update_pallet_storage_version<T: Config>() -> frame_support::weights::Weight {
+    info!(" >>> Upgrade withdraw tx storage version...");
+    // Update pallet storage version
+    PalletVersion::<T>::set(types::StorageVersion::V2);
+    info!(" <<< Withdraw tx storage version upgraded");
+
+    // Return the weight consumed by the migration.
+    T::DbWeight::get().reads_writes(0_u64, 1_u64)
 }
