@@ -127,7 +127,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 					}
 				}
 
-				err = bridge.blockPersistency.SaveHeight(height.LastHeight)
+				err = bridge.blockPersistency.SaveHeight(uint32(data.Head))
 				if err != nil {
 					return errors.Wrap(err, "error while saving height")
 				}
