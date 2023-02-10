@@ -126,6 +126,11 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 						return errors.Wrap(err, "failed to handle pending refund")
 					}
 				}
+
+				err = bridge.blockPersistency.SaveHeight(height.LastHeight)
+				if err != nil {
+					return errors.Wrap(err, "error while saving height")
+				}
 			}
 
 			for _, withdrawCreatedEvent := range data.Events.WithdrawCreatedEvents {
