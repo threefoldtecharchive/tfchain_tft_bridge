@@ -109,7 +109,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 				if err != nil {
 					return errors.Wrap(err, "failed to get pending withdraws")
 				}
-				for _, withdraw := range *pendingWithdraws {
+				for _, withdraw := range pendingWithdraws {
 					err := bridge.handlePendingWithdraw(ctx, withdraw)
 					if err != nil {
 						return errors.Wrap(err, "failed to handle pending withdraw")
@@ -120,7 +120,7 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 				if err != nil {
 					return errors.Wrap(err, "failed to get pending refunds")
 				}
-				for _, refund := range *pendingRefunds {
+				for _, refund := range pendingRefunds {
 					err := bridge.handlePendingRefund(ctx, refund)
 					if err != nil {
 						return errors.Wrap(err, "failed to handle pending refund")
