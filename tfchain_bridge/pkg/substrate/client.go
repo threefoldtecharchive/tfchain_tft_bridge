@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
 )
@@ -105,7 +106,16 @@ func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uin
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.SetBurnTransactionExecuted(s.identity, tixd)
+			burnedAlready, bErr := s.IsBurnedAlready(types.U64(tixd))
+			if bErr != nil {
+				return bErr
+			}
+
+			if !burnedAlready {
+				err = s.SetBurnTransactionExecuted(s.identity, tixd)
+			} else {
+				err = nil
+			}
 		}
 	}
 
@@ -121,7 +131,16 @@ func (s *SubstrateClient) RetryProposeWithdrawOrAddSig(ctx context.Context, txID
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+			burnedAlready, bErr := s.IsBurnedAlready(types.U64(txID))
+			if bErr != nil {
+				return bErr
+			}
+
+			if !burnedAlready {
+				err = s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+			} else {
+				err = nil
+			}
 		}
 	}
 
@@ -137,7 +156,17 @@ func (s *SubstrateClient) RetryCreateRefundTransactionOrAddSig(ctx context.Conte
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.CreateRefundTransactionOrAddSig(s.identity, txHash, target, amount, signature, stellarAddress, sequence_number)
+			refundedAlready, rErr := s.IsRefundedAlready(txHash)
+			if rErr != nil {
+				return rErr
+			}
+
+			if !refundedAlready {
+				err = s.CreateRefundTransactionOrAddSig(s.identity, txHash, target, amount, signature, stellarAddress, sequence_number)
+			} else {
+				err = nil
+			}
+
 		}
 	}
 
@@ -153,7 +182,16 @@ func (s *SubstrateClient) RetrySetRefundTransactionExecutedTx(ctx context.Contex
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.SetRefundTransactionExecuted(s.identity, txHash)
+			refundedAlready, rErr := s.IsRefundedAlready(txHash)
+			if rErr != nil {
+				return rErr
+			}
+
+			if !refundedAlready {
+				err = s.SetRefundTransactionExecuted(s.identity, txHash)
+			} else {
+				err = nil
+			}
 		}
 	}
 
@@ -169,7 +207,16 @@ func (s *SubstrateClient) RetryProposeMintOrVote(ctx context.Context, txID strin
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.ProposeOrVoteMintTransaction(s.identity, txID, target, amount)
+			mintedAlready, mErr := s.IsMintedAlready(txID)
+			if mErr != nil {
+				return mErr
+			}
+
+			if !mintedAlready {
+				err = s.ProposeOrVoteMintTransaction(s.identity, txID, target, amount)
+			} else {
+				err = nil
+			}
 		}
 	}
 
