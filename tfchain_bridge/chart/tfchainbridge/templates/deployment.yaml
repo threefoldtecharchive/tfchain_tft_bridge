@@ -54,6 +54,9 @@ spec:
             {{ if .Values.rescan }}
             "--rescan=true",
             {{ end}}
+            {{ if .Values.debug }}
+            "--debug"
+            {{ end }}
           ]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
