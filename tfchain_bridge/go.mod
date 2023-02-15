@@ -21,7 +21,7 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v4 v4.1.3
-	github.com/threefoldtech/substrate-client v0.0.0-20230203145052-45be626d311b
+	github.com/threefoldtech/substrate-client v0.0.0-20230214155430-0b50f9fbf54c
 )
 
 require (
@@ -55,5 +55,3 @@ require (
 )
 
 replace github.com/centrifuge/go-substrate-rpc-client/v4 v4.0.5 => github.com/threefoldtech/go-substrate-rpc-client/v4 v4.0.6-0.20230102154731-7c633b7d3c71
-
-replace github.com/threefoldtech/substrate-client => /home/dylan/Projects/substrate-client

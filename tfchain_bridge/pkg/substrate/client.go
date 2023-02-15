@@ -2,11 +2,11 @@ package substrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
@@ -43,6 +43,8 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 		return nil, err
 	}
 
+	log.Info().Msgf("key with address %s loaded", tfchainIdentity.Address())
+
 	isValidator, err := cl.IsValidator(tfchainIdentity)
 	if err != nil {
 		return nil, err
@@ -56,45 +58,6 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 		cl,
 		tfchainIdentity,
 	}, nil
-}
-
-func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan<- EventSubscription) error {
-	cl, _, err := client.GetClient()
-	if err != nil {
-		log.Fatal().Msg("failed to get client")
-	}
-
-	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
-	if err != nil {
-		log.Fatal().Msg("failed to subscribe to finalized heads")
-	}
-
-	for {
-		select {
-		case head := <-chainHeadsSub.Chan():
-			events, err := client.processEventsForHeight(uint32(head.Number))
-			data := EventSubscription{
-				Events: events,
-				Err:    err,
-			}
-			eventChannel <- data
-		case err := <-chainHeadsSub.Err():
-			log.Err(err).Msg("error with subscription")
-
-			bo := backoff.NewExponentialBackOff()
-			bo.MaxElapsedTime = time.Duration(time.Minute * 10) // 10 minutes
-			_ = backoff.RetryNotify(func() error {
-				chainHeadsSub, err = cl.RPC.Chain.SubscribeFinalizedHeads()
-				return err
-			}, bo, func(err error, d time.Duration) {
-				log.Warn().Err(err).Msgf("connection to chain lost, reopening connection in %s", d.String())
-			})
-
-		case <-ctx.Done():
-			chainHeadsSub.Unsubscribe()
-			return ctx.Err()
-		}
-	}
 }
 
 func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uint64) error {
@@ -209,7 +172,9 @@ func (s *SubstrateClient) RetryProposeMintOrVote(ctx context.Context, txID strin
 		case <-time.After(10 * time.Second):
 			mintedAlready, mErr := s.IsMintedAlready(txID)
 			if mErr != nil {
-				return mErr
+				if !errors.Is(mErr, substrate.ErrMintTransactionNotFound) {
+					return err
+				}
 			}
 
 			if !mintedAlready {
