@@ -38,7 +38,7 @@ func (bridge *Bridge) handleRefundExpired(ctx context.Context, refundExpiredEven
 
 	if refunded {
 		log.Info().Str("tx_id", refundExpiredEvent.Hash).Msg("tx is refunded already, skipping...")
-		return pkg.ErrTransactionAlreadyRefunded
+		return nil
 	}
 
 	signature, sequenceNumber, err := bridge.wallet.CreateRefundAndReturnSignature(ctx, refundExpiredEvent.Target, refundExpiredEvent.Amount, refundExpiredEvent.Hash)
