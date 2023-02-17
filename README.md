@@ -7,6 +7,8 @@ There are 2 components that make up this bridge:
 - A pallet that needs to be included in the [tfchain](https://github.com/threefoldtech/tfchain) runtime: [pallet-tft-bridge](./pallet-tft-bridge)
 - Bridge daemons: [tfchain_bridge](./tfchain_bridge)
 
+See more about [architecture](./docs/architecture.md)
+
 ## Running Bridge instances
 
 ### Mainnet
