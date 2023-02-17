@@ -14,19 +14,26 @@ The local instance will consist of a connection between a tfchain that runs in d
 
 See [tfchain](https://github.com/threefoldtech/tfchain/blob/development/docs/development/development.md)
 
+Create a twin on your local chain:
+
+- Open https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/extrinsics
+- Select `Alice` as source account
+- Select `TfgridModule` -> `UserAcceptTc` and input ("somelink", "somehash")
+- Select `TfgridModule` -> `CreateTwin` and submit the default values
+
 ### Step 2: Run bridge daemons
 
 In this example we generated 2 keypairs using this [tool](https://github.com/threefoldfoundation/tft/tree/main/bsc/bridges/stellar/utils)
 
 ```sh
-➜ go run main.go generate --count 2
+./stellar-utils generate bridge 2
 generating 2 accounts and setting account options ...
 
 Bridge master address: GAYJSBPBQ3J32CZZ72OM3GZP646KSVD3V5QB3WBJSSGPYHYS5MZSS4Z6
 Bridge master secret: SDUHCIXQGCPQ2535FM2QK6KX43XH7RLCJ33RGYOKUYLA7E5W7LPBNEV7
 
-Other signer address: GBFJM4HM4O7LTR2XLIIJMFPETKRQSRV6BF65DAUNR43WFE325FTLCURQ
-Other signer secret: SCMEF63H2BA7WZDDBNGUP6YSGVW3O356CFOE4SHEGLQX3TXULEGEIXSG
+Signer 1 address: GBFJM4HM4O7LTR2XLIIJMFPETKRQSRV6BF65DAUNR43WFE325FTLCURQ
+Signer 1 secret: SCMEF63H2BA7WZDDBNGUP6YSGVW3O356CFOE4SHEGLQX3TXULEGEIXSG
 ```
 
 The bridge master address is the address that will essentially vault the TFT. The other signer addresses / secrets are used to perform multisig on the master bridge wallet address. Running the above script will set all the generated signer addresses as a signer on the bridge master address.
@@ -81,6 +88,43 @@ If all goes well, you should see something similar to following output:
 5:25PM INF fetching events for blockheight ID=11
 ```
 
-# Step 3: Deposit some TFT
+# Step 3: Setup a personal wallet
 
-TODO
+First generate another account which you can use to interact with the bridge:
+
+Use the same tool we used above to generate the keypairs: [tool](https://github.com/threefoldfoundation/tft/tree/main/bsc/bridges/stellar/utils)
+
+```sh
+./stellar-utils generate plain
+
+New Account address: GCNFIHEN7LQZ4BVA4ADXIXEHPUXSMM6WHNKRR6MD3BYOBJZ3ADUW44TK
+New Account secret: SDGRCA63GSP4MSASFAWX5FORTS6ATQMK63YL6ZMF7YIFEJVBTLJDJA3M
+```
+
+Now, request some Testnet TFT by doing a swap on the stellar dex using the same tool:
+
+```sh
+./stellar-utils faucet --secret SDGRCA63GSP4MSASFAWX5FORTS6ATQMK63YL6ZMF7YIFEJVBTLJDJA3M
+```
+
+Given this command did not give an error, your account you just generated now has 100 TFT.
+
+# Step 4: Deposit TFT to the bridge
+
+If
+
+- Tfchain is running
+- The bridge daemons are running
+- You generated a personal wallet and have TFT on it
+
+You can start doing a deposit on the bridge using the same tool again
+
+First identify the bridge master address you generated above, in this example the address is: `GAYJSBPBQ3J32CZZ72OM3GZP646KSVD3V5QB3WBJSSGPYHYS5MZSS4Z6`.
+
+Now construct a memo message indicating which twin you will deposit to: "twin_TWINID" (you should have created a twin in the above steps).
+
+```sh
+./stellar-utils transfer 50 "twin_1" GAYJSBPBQ3J32CZZ72OM3GZP646KSVD3V5QB3WBJSSGPYHYS5MZSS4Z6 --secret SDGRCA63GSP4MSASFAWX5FORTS6ATQMK63YL6ZMF7YIFEJVBTLJDJA3M
+```
+
+Now you should have received the tokens minus the depositfee on your account on tfchain (the default depositfee is 10 TFT).
