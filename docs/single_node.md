@@ -82,7 +82,7 @@ Now, request some Testnet TFT by doing a swap on the stellar dex using the same 
 
 Given this command did not give an error, your account you just generated now has 100 TFT.
 
-# Step 4: Deposit TFT to the bridge
+## Step 4: Deposit TFT to the bridge
 
 If
 

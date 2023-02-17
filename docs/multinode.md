@@ -27,11 +27,11 @@ Bridge master secret: SDUHCIXQGCPQ2535FM2QK6KX43XH7RLCJ33RGYOKUYLA7E5W7LPBNEV7
 Signer 1 address: GBFJM4HM4O7LTR2XLIIJMFPETKRQSRV6BF65DAUNR43WFE325FTLCURQ
 Signer 1 secret: SCMEF63H2BA7WZDDBNGUP6YSGVW3O356CFOE4SHEGLQX3TXULEGEIXSG
 
-Signer 1 address: GDCD6UY43MSGHMMYMXN4BGCJT75XMKZDL5INMTMS3YAKZ435WK3NZ5YH
-Signer 1 secret: SBFMRNGJQ5NMVXJKDMSBHDDCHVXOJE4E7A62A4MHAD4A5DH5RU5ONWVK
+Signer 2 address: GDCD6UY43MSGHMMYMXN4BGCJT75XMKZDL5INMTMS3YAKZ435WK3NZ5YH
+Signer 2 secret: SBFMRNGJQ5NMVXJKDMSBHDDCHVXOJE4E7A62A4MHAD4A5DH5RU5ONWVK
 ```
 
-The bridge master address is the address that will essentially vault the TFT. The other signer addresses / secrets are used to perform multisig on the master bridge wallet address. Running the above script will set all the generated signer addresses as a signer on the bridge master address.
+The bridge master address is the address that will essentially vault the TFT. The other signer addresses / secrets are used to perform multisig on the master bridge wallet address. Running the above tool will set all the generated signer addresses as a signer on the bridge master address.
 
 Following predefined tfchain keys can be used to start a bridge daemon:
 
@@ -39,7 +39,40 @@ Following predefined tfchain keys can be used to start a bridge daemon:
 - `employ split promote annual couple elder remain cricket company fitness senior fiscal` (bridge validator 2)
 - `remind bird banner word spread volume card keep want faith insect mind` (bridge validator 3)
 
-Change directory to the tfchain_bridge daemon (Make sure tfchain is running on your host)
+By default, only 1 bridge validator is inserted in the tfchain runtime. In this example we will run a 3 node bridge setup, so we need to add 2 keys to the bridge validators on tfchain.
+
+- Open: https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/extrinsics
+- Select "Alice" account
+- Select `Sudo` -> `Call` -> `tftBridgeModule` -> `addBridgeValidator` and input: `5CGQ6zra7qXw4RNVwUYM4bxHjxdj9VZH7DKsDwhfBCgVPmUZ`
+- Do the same for: `5CVLaAHnvdX1CBsaKFKgfyfb91y5ApNP7FLSaczKginip1ho`
+
+We inserted 2 addresses as authorized bridge validators, these addresses map to the last 2 of the predefined keys listed above
+
+See:
+
+```sh
+subkey inspect "employ split promote annual couple elder remain cricket company fitness senior fiscal"
+Secret phrase `employ split promote annual couple elder remain cricket company fitness senior fiscal` is account:
+  Secret seed:      0xda84de3116bf3d9036c0a376e90c1b8a5a84ef52ce85a732fa0ffd0ab2699be6
+  Public key (hex): 0x08eb2ee1d96b113f489dcda348b296fe74e4c54706287ff874ac587da7ca0c1f
+  Account ID:       0x08eb2ee1d96b113f489dcda348b296fe74e4c54706287ff874ac587da7ca0c1f
+  SS58 Address:     5CGQ6zra7qXw4RNVwUYM4bxHjxdj9VZH7DKsDwhfBCgVPmUZ
+```
+
+And
+
+```sh
+subkey inspect "remind bird banner word spread volume card keep want faith insect mind"
+Secret phrase `remind bird banner word spread volume card keep want faith insect mind` is account:
+  Secret seed:      0x354c820c3a4b8b4e6b4df6e9f6e0223f88ad15b3275b26c8837cc43cb6c42039
+  Public key (hex): 0x12c97c156fea423e3b0a35361a7c8c9925dafdd20c5451507c4725c546224722
+  Account ID:       0x12c97c156fea423e3b0a35361a7c8c9925dafdd20c5451507c4725c546224722
+  SS58 Address:     5CVLaAHnvdX1CBsaKFKgfyfb91y5ApNP7FLSaczKginip1ho
+```
+
+> For every stellar keypair, we should have a tfchain keypair. As you can see above, we generated 3 bridge wallets and we have 3 tfchain keys.
+
+Now lets run the bridge: change directory to the tfchain_bridge daemon (Make sure tfchain is running on your host)
 
 ```
 cd tfchain_bridge
@@ -111,7 +144,7 @@ Now, request some Testnet TFT by doing a swap on the stellar dex using the same 
 
 Given this command did not give an error, your account you just generated now has 100 TFT.
 
-# Step 4: Deposit TFT to the bridge
+## Step 4: Deposit TFT to the bridge
 
 If
 
