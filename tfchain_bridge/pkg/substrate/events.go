@@ -1,7 +1,10 @@
 package substrate
 
 import (
-	"github.com/centrifuge/go-substrate-rpc-client/v4/rpc/state"
+	"context"
+	"time"
+
+	"github.com/cenkalti/backoff/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
@@ -55,28 +58,51 @@ type RefundTransactionExpiredEvent struct {
 	Amount uint64
 }
 
-func (client *SubstrateClient) SubscribeEvents() (*state.StorageSubscription, types.StorageKey, error) {
-	cl, meta, err := client.GetClient()
+func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan<- EventSubscription) error {
+	cl, _, err := client.GetClient()
 	if err != nil {
-		return nil, nil, err
+		log.Fatal().Msg("failed to get client")
 	}
 
-	// Subscribe to system events via storage
-	key, err := types.CreateStorageKey(meta, "System", "Events", nil)
+	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
 	if err != nil {
-		return nil, nil, err
+		log.Fatal().Msg("failed to subscribe to finalized heads")
 	}
 
-	sub, err := cl.RPC.State.SubscribeStorageRaw([]types.StorageKey{key})
-	if err != nil {
-		return nil, nil, err
+	for {
+		select {
+		case head := <-chainHeadsSub.Chan():
+			events, err := client.processEventsForHeight(uint32(head.Number))
+			data := EventSubscription{
+				Events: events,
+				Err:    err,
+			}
+			eventChannel <- data
+		case err := <-chainHeadsSub.Err():
+			log.Err(err).Msg("error with subscription")
+
+			bo := backoff.NewExponentialBackOff()
+			bo.MaxElapsedTime = time.Duration(time.Minute * 10) // 10 minutes
+			_ = backoff.RetryNotify(func() error {
+				chainHeadsSub, err = cl.RPC.Chain.SubscribeFinalizedHeads()
+				return err
+			}, bo, func(err error, d time.Duration) {
+				log.Warn().Err(err).Msgf("connection to chain lost, reopening connection in %s", d.String())
+			})
+
+		case <-ctx.Done():
+			chainHeadsSub.Unsubscribe()
+			return ctx.Err()
+		}
 	}
-	// defer unsubscribe(sub)
-	return sub, key, err
 }
 
 func (client *SubstrateClient) processEventsForHeight(height uint32) (Events, error) {
 	log.Info().Uint32("ID", height).Msg("fetching events for blockheight")
+	if height == 0 {
+		return Events{}, nil
+	}
+
 	records, err := client.GetEventsForBlock(height)
 	if err != nil {
 		log.Err(err).Uint32("ID", height).Msg("failed to decode block for height")

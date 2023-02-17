@@ -2,11 +2,12 @@ package substrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
 )
@@ -42,6 +43,8 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 		return nil, err
 	}
 
+	log.Info().Msgf("key with address %s loaded", tfchainIdentity.Address())
+
 	isValidator, err := cl.IsValidator(tfchainIdentity)
 	if err != nil {
 		return nil, err
@@ -57,45 +60,6 @@ func NewSubstrateClient(url string, seed string) (*SubstrateClient, error) {
 	}, nil
 }
 
-func (client *SubstrateClient) SubscribeTfchainBridgeEvents(ctx context.Context, eventChannel chan<- EventSubscription) error {
-	cl, _, err := client.GetClient()
-	if err != nil {
-		log.Fatal().Msg("failed to get client")
-	}
-
-	chainHeadsSub, err := cl.RPC.Chain.SubscribeFinalizedHeads()
-	if err != nil {
-		log.Fatal().Msg("failed to subscribe to finalized heads")
-	}
-
-	for {
-		select {
-		case head := <-chainHeadsSub.Chan():
-			events, err := client.processEventsForHeight(uint32(head.Number))
-			data := EventSubscription{
-				Events: events,
-				Err:    err,
-			}
-			eventChannel <- data
-		case err := <-chainHeadsSub.Err():
-			log.Err(err).Msg("error with subscription")
-
-			bo := backoff.NewExponentialBackOff()
-			bo.MaxElapsedTime = time.Duration(time.Minute * 10) // 10 minutes
-			_ = backoff.RetryNotify(func() error {
-				chainHeadsSub, err = cl.RPC.Chain.SubscribeFinalizedHeads()
-				return err
-			}, bo, func(err error, d time.Duration) {
-				log.Warn().Err(err).Msgf("connection to chain lost, reopening connection in %s", d.String())
-			})
-
-		case <-ctx.Done():
-			chainHeadsSub.Unsubscribe()
-			return ctx.Err()
-		}
-	}
-}
-
 func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uint64) error {
 	err := s.SetBurnTransactionExecuted(s.identity, tixd)
 	for err != nil {
@@ -105,7 +69,16 @@ func (s *SubstrateClient) RetrySetWithdrawExecuted(ctx context.Context, tixd uin
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.SetBurnTransactionExecuted(s.identity, tixd)
+			burnedAlready, bErr := s.IsBurnedAlready(types.U64(tixd))
+			if bErr != nil {
+				return bErr
+			}
+
+			if !burnedAlready {
+				err = s.SetBurnTransactionExecuted(s.identity, tixd)
+			} else {
+				err = nil
+			}
 		}
 	}
 
@@ -121,7 +94,16 @@ func (s *SubstrateClient) RetryProposeWithdrawOrAddSig(ctx context.Context, txID
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+			burnedAlready, bErr := s.IsBurnedAlready(types.U64(txID))
+			if bErr != nil {
+				return bErr
+			}
+
+			if !burnedAlready {
+				err = s.ProposeBurnTransactionOrAddSig(s.identity, txID, target, amount, signature, stellarAddress, sequence_number)
+			} else {
+				err = nil
+			}
 		}
 	}
 
@@ -137,7 +119,17 @@ func (s *SubstrateClient) RetryCreateRefundTransactionOrAddSig(ctx context.Conte
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.CreateRefundTransactionOrAddSig(s.identity, txHash, target, amount, signature, stellarAddress, sequence_number)
+			refundedAlready, rErr := s.IsRefundedAlready(txHash)
+			if rErr != nil {
+				return rErr
+			}
+
+			if !refundedAlready {
+				err = s.CreateRefundTransactionOrAddSig(s.identity, txHash, target, amount, signature, stellarAddress, sequence_number)
+			} else {
+				err = nil
+			}
+
 		}
 	}
 
@@ -153,7 +145,16 @@ func (s *SubstrateClient) RetrySetRefundTransactionExecutedTx(ctx context.Contex
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.SetRefundTransactionExecuted(s.identity, txHash)
+			refundedAlready, rErr := s.IsRefundedAlready(txHash)
+			if rErr != nil {
+				return rErr
+			}
+
+			if !refundedAlready {
+				err = s.SetRefundTransactionExecuted(s.identity, txHash)
+			} else {
+				err = nil
+			}
 		}
 	}
 
@@ -169,7 +170,18 @@ func (s *SubstrateClient) RetryProposeMintOrVote(ctx context.Context, txID strin
 		case <-ctx.Done():
 			return err
 		case <-time.After(10 * time.Second):
-			err = s.ProposeOrVoteMintTransaction(s.identity, txID, target, amount)
+			mintedAlready, mErr := s.IsMintedAlready(txID)
+			if mErr != nil {
+				if !errors.Is(mErr, substrate.ErrMintTransactionNotFound) {
+					return err
+				}
+			}
+
+			if !mintedAlready {
+				err = s.ProposeOrVoteMintTransaction(s.identity, txID, target, amount)
+			} else {
+				err = nil
+			}
 		}
 	}
 

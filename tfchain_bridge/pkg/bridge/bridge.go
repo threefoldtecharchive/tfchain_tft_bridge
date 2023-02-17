@@ -90,7 +90,6 @@ func (bridge *Bridge) Start(ctx context.Context) error {
 	tfchainSub := make(chan subpkg.EventSubscription)
 	go func() {
 		defer close(tfchainSub)
-
 		if err := bridge.subClient.SubscribeTfchainBridgeEvents(ctx, tfchainSub); err != nil {
 			log.Fatal().Msgf("failed to subscribe to tfchain %s", err.Error())
 		}
