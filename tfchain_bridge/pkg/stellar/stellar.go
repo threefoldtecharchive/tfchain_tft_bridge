@@ -58,7 +58,14 @@ func NewStellarWallet(ctx context.Context, config *pkg.StellarConfig) (*StellarW
 		return nil, err
 	}
 	log.Info().Msgf("required signature count %d", int(account.Thresholds.MedThreshold))
-	w.signatureCount = int(account.Thresholds.MedThreshold)
+
+	// If no threshold is set (0) we can asume it's a "normal" account without options
+	// set the signature count to 1
+	if int(account.Thresholds.MedThreshold) == 0 {
+		w.signatureCount = 1
+	} else {
+		w.signatureCount = int(account.Thresholds.MedThreshold)
+	}
 
 	w.sequenceNumber, err = account.GetSequenceNumber()
 	if err != nil {
