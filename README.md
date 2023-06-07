@@ -1,5 +1,7 @@
 # Tfchain TFT bridge
 
+ARCHIVED TO: https://github.com/threefoldtech/tfchain/tree/development/bridge
+
 Bridge TFT between a TFchain and the Stellar network.
 
 There are 2 components that make up this bridge:
